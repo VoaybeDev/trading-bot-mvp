@@ -1,11 +1,23 @@
 import asyncio
-from fastapi import FastAPI
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 from .bot import TradingBot
 from .db import fetch_logs, fetch_trades
+from .settings import get_settings, reset_settings, update_settings
 
-app = FastAPI(title="Trading Bot MVP")
+app = FastAPI(title="Trading Bot MVP - Real Market Data")
 bot = TradingBot()
+
+
+class SettingsUpdatePayload(BaseModel):
+    symbol: Optional[str] = None
+    interval: Optional[str] = None
+    take_profit_usd: Optional[float] = None
+    stop_loss_usd: Optional[float] = None
+    initial_balance: Optional[float] = None
 
 
 @app.get("/")
@@ -56,3 +68,35 @@ def logs():
 def reset():
     bot.reset()
     return bot.snapshot()
+
+
+@app.get("/settings")
+def read_settings():
+    return get_settings()
+
+
+@app.post("/settings/update")
+def api_update_settings(payload: SettingsUpdatePayload):
+    try:
+        updated = update_settings(**payload.model_dump(exclude_none=True))
+        bot.reset()
+        bot._log(f"Paramètres mis à jour: {updated}")
+        return {
+            "message": "Paramètres mis à jour et bot réinitialisé",
+            "settings": updated,
+            "status": bot.snapshot(),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/settings/reset")
+def api_reset_settings():
+    settings = reset_settings()
+    bot.reset()
+    bot._log("Paramètres réinitialisés aux valeurs par défaut")
+    return {
+        "message": "Paramètres réinitialisés",
+        "settings": settings,
+        "status": bot.snapshot(),
+    }

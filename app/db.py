@@ -57,10 +57,10 @@ def init_db(initial_balance=8.0):
             INSERT INTO wallet_state (id, initial_balance, cash, position_qty, entry_price)
             VALUES (1, ?, ?, ?, ?)
         """, (
-            initial_balance,  # initial_balance
-            initial_balance,  # cash
-            0.0,              # position_qty
-            None              # entry_price
+            initial_balance,
+            initial_balance,
+            0.0,
+            None,
         ))
 
     conn.commit()
@@ -201,10 +201,10 @@ def reset_database(initial_balance=8.0):
         INSERT INTO wallet_state (id, initial_balance, cash, position_qty, entry_price)
         VALUES (1, ?, ?, ?, ?)
     """, (
-        initial_balance,  # initial_balance
-        initial_balance,  # cash
-        0.0,              # position_qty
-        None              # entry_price
+        initial_balance,
+        initial_balance,
+        0.0,
+        None,
     ))
 
     conn.commit()
