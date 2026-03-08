@@ -1,12 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  getStatus,
-  startBot,
-  stopBot,
-  tickBot,
-  resetBot,
-  updateSettings,
-} from "./api";
+import { getStatus, startBot, stopBot, tickBot, resetBot, updateSettings } from "./api";
 
 const defaultForm = {
   symbol: "BTCUSDT",
@@ -16,13 +9,64 @@ const defaultForm = {
   initial_balance: 8,
 };
 
+function GitHubIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z" />
+    </svg>
+  );
+}
+
+function FooterLink() {
+  const [hovered, setHovered] = useState(false);
+
+  const base = {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    textDecoration: "none",
+    fontSize: "0.85rem",
+    fontWeight: "600",
+    padding: "8px 16px",
+    borderRadius: "999px",
+    transition: "all 0.2s ease",
+    border: hovered ? "1px solid rgba(0,212,255,0.35)" : "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.03)",
+    color: hovered ? "var(--accent-cyan)" : "var(--text-secondary)",
+    boxShadow: hovered ? "0 0 18px rgba(0,212,255,0.12)" : "none",
+  };
+
+  return (
+    <a
+      href="https://github.com/VoaybeDev"
+      target="_blank"
+      rel="noopener noreferrer"
+      style={base}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <GitHubIcon />
+      VoaybeDev
+    </a>
+  );
+}
+
+function InfoRow({ label, value, highlight }) {
+  const colorMap = { green: "var(--accent-green)", red: "var(--accent-red)", cyan: "var(--accent-cyan)" };
+  return (
+    <div>
+      <strong>{label}</strong>
+      <span style={highlight ? { color: colorMap[highlight] } : {}}>{value ?? "—"}</span>
+    </div>
+  );
+}
+
 function App() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
   const [form, setForm] = useState(defaultForm);
 
   async function loadStatus() {
@@ -31,14 +75,13 @@ function App() {
       setError("");
       const data = await getStatus();
       setStatus(data);
-
-      if (data?.settings) {
+      if (data && data.settings) {
         setForm({
-          symbol: data.settings.symbol ?? "BTCUSDT",
-          interval: data.settings.interval ?? "1m",
-          take_profit_usd: data.settings.take_profit_usd ?? 1,
-          stop_loss_usd: data.settings.stop_loss_usd ?? -1,
-          initial_balance: data.settings.initial_balance ?? 8,
+          symbol: data.settings.symbol || "BTCUSDT",
+          interval: data.settings.interval || "1m",
+          take_profit_usd: data.settings.take_profit_usd || 1,
+          stop_loss_usd: data.settings.stop_loss_usd || -1,
+          initial_balance: data.settings.initial_balance || 8,
         });
       }
     } catch (err) {
@@ -50,29 +93,27 @@ function App() {
 
   useEffect(() => {
     loadStatus();
-    const intervalId = setInterval(loadStatus, 5000);
-    return () => clearInterval(intervalId);
+    const id = setInterval(loadStatus, 5000);
+    return () => clearInterval(id);
   }, []);
 
-  async function handleAction(actionFn, successText = "") {
+  async function handleAction(actionFn, successText) {
     try {
       setActionLoading(true);
       setError("");
       setMessage("");
       const data = await actionFn();
       setStatus(data);
-      if (data?.settings) {
+      if (data && data.settings) {
         setForm({
-          symbol: data.settings.symbol ?? "BTCUSDT",
-          interval: data.settings.interval ?? "1m",
-          take_profit_usd: data.settings.take_profit_usd ?? 1,
-          stop_loss_usd: data.settings.stop_loss_usd ?? -1,
-          initial_balance: data.settings.initial_balance ?? 8,
+          symbol: data.settings.symbol || "BTCUSDT",
+          interval: data.settings.interval || "1m",
+          take_profit_usd: data.settings.take_profit_usd || 1,
+          stop_loss_usd: data.settings.stop_loss_usd || -1,
+          initial_balance: data.settings.initial_balance || 8,
         });
       }
-      if (successText) {
-        setMessage(successText);
-      }
+      if (successText) setMessage(successText);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -82,12 +123,10 @@ function App() {
 
   async function handleUpdateSettings(e) {
     e.preventDefault();
-
     try {
       setActionLoading(true);
       setError("");
       setMessage("");
-
       const payload = {
         symbol: form.symbol,
         interval: form.interval,
@@ -95,10 +134,9 @@ function App() {
         stop_loss_usd: Number(form.stop_loss_usd),
         initial_balance: Number(form.initial_balance),
       };
-
       const result = await updateSettings(payload);
       setStatus(result.status);
-      setMessage(result.message || "Paramètres mis à jour");
+      setMessage(result.message || "Parametres mis a jour");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -108,75 +146,84 @@ function App() {
 
   function handleInputChange(e) {
     const { name, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  const market = status?.market;
-  const settings = status?.settings;
-  const wallet = status?.wallet;
-  const signal = status?.last_signal;
-  const trades = status?.trades || [];
-  const logs = status?.logs || [];
+  const market = status && status.market;
+  const settings = status && status.settings;
+  const wallet = status && status.wallet;
+  const signal = status && status.last_signal;
+  const trades = (status && status.trades) || [];
+  const logs = (status && status.logs) || [];
+
+  const pnlHighlight = wallet && wallet.daily_pnl > 0 ? "green" : wallet && wallet.daily_pnl < 0 ? "red" : null;
+  const signalHighlight = signal && signal.signal === "BUY" ? "green" : signal && signal.signal === "SELL" ? "red" : null;
+
+  const actionButtons = [
+    { label: "Refresh", fn: () => handleAction(loadStatus, "Donnees actualisees") },
+    { label: "Start",   fn: () => handleAction(startBot,   "Bot demarre") },
+    { label: "Stop",    fn: () => handleAction(stopBot,    "Bot arrete") },
+    { label: "Tick",    fn: () => handleAction(tickBot,    "Tick execute") },
+    { label: "Reset",   fn: () => handleAction(resetBot,   "Bot reinitialise") },
+  ];
+
+  const intervals = ["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d"];
 
   return (
     <div className="page">
-      <header className="header">
-        <div>
-          <h1>Trading Bot Dashboard</h1>
-          <p>Frontend React du bot de trading</p>
-        </div>
 
-        <div className={`badge ${status?.running ? "running" : "stopped"}`}>
-          {status?.running ? "BOT EN MARCHE" : "BOT ARRÊTÉ"}
+      <header className="header">
+        <div className="header-brand">
+          <h1>
+            <span style={{ fontStyle: "italic" }}>Nex</span>
+            <span style={{ background: "var(--gradient-accent)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Trade</span>
+            <sup style={{ fontSize: "0.45em", color: "var(--accent-purple)", fontWeight: 400, marginLeft: "4px" }}>v1</sup>
+          </h1>
+          <p>Surveillance et Controle en temps reel</p>
+        </div>
+        <div className={status && status.running ? "badge running" : "badge stopped"}>
+          {status && status.running ? "Bot en marche" : "Bot arrete"}
         </div>
       </header>
 
-      {error && <div className="alert error">{error}</div>}
-      {message && <div className="alert success">{message}</div>}
+      {error   && <div className="alert error">  {error}   </div>}
+      {message && <div className="alert success"> {message} </div>}
 
       <section className="actions">
-        <button onClick={() => handleAction(loadStatus, "Données actualisées")} disabled={actionLoading}>
-          Refresh
-        </button>
-        <button onClick={() => handleAction(startBot, "Bot démarré")} disabled={actionLoading}>
-          Start
-        </button>
-        <button onClick={() => handleAction(stopBot, "Bot arrêté")} disabled={actionLoading}>
-          Stop
-        </button>
-        <button onClick={() => handleAction(tickBot, "Tick exécuté")} disabled={actionLoading}>
-          Tick
-        </button>
-        <button onClick={() => handleAction(resetBot, "Bot réinitialisé")} disabled={actionLoading}>
-          Reset
-        </button>
+        {actionButtons.map(function(item) {
+          return (
+            <button key={item.label} onClick={item.fn} disabled={actionLoading}>
+              {item.label}
+            </button>
+          );
+        })}
       </section>
 
       {loading && !status ? (
-        <div className="card">Chargement...</div>
+        <div className="card loading-state">
+          <span className="spinner" />
+          Chargement...
+        </div>
       ) : (
-        <>
+        <div>
           <section className="grid two">
             <div className="card">
-              <h2>Marché</h2>
+              <h2>Marche</h2>
               <div className="info-list">
-                <div><strong>Symbol:</strong> {market?.symbol}</div>
-                <div><strong>Interval:</strong> {market?.interval}</div>
-                <div><strong>Prix actuel:</strong> {market?.current_price}</div>
+                <InfoRow label="Symbol"      value={market && market.symbol}        highlight="cyan" />
+                <InfoRow label="Interval"    value={market && market.interval} />
+                <InfoRow label="Prix actuel" value={market && market.current_price} highlight="cyan" />
               </div>
             </div>
 
             <div className="card">
               <h2>Signal</h2>
               <div className="info-list">
-                <div><strong>Signal:</strong> {signal?.signal}</div>
-                <div><strong>Score:</strong> {signal?.score}</div>
-                <div><strong>Strong:</strong> {String(signal?.strong)}</div>
-                <div><strong>MA10:</strong> {signal?.ma10}</div>
-                <div><strong>MA20:</strong> {signal?.ma20}</div>
+                <InfoRow label="Signal" value={signal && signal.signal} highlight={signalHighlight} />
+                <InfoRow label="Score"  value={signal && signal.score} />
+                <InfoRow label="Strong" value={signal ? String(signal.strong) : "—"} />
+                <InfoRow label="MA10"   value={signal && signal.ma10} />
+                <InfoRow label="MA20"   value={signal && signal.ma20} />
               </div>
             </div>
           </section>
@@ -185,98 +232,55 @@ function App() {
             <div className="card">
               <h2>Wallet</h2>
               <div className="info-list">
-                <div><strong>Capital initial:</strong> {wallet?.initial_balance}</div>
-                <div><strong>Cash:</strong> {wallet?.cash}</div>
-                <div><strong>Position ouverte:</strong> {String(wallet?.has_position)}</div>
-                <div><strong>Entry price:</strong> {wallet?.entry_price ?? "-"}</div>
-                <div><strong>Position qty:</strong> {wallet?.position_qty}</div>
-                <div><strong>Equity:</strong> {wallet?.equity}</div>
-                <div><strong>Position PnL:</strong> {wallet?.position_pnl}</div>
-                <div><strong>Daily PnL:</strong> {wallet?.daily_pnl}</div>
+                <InfoRow label="Capital initial"  value={wallet && wallet.initial_balance} />
+                <InfoRow label="Cash"             value={wallet && wallet.cash}            highlight="cyan" />
+                <InfoRow label="Position ouverte" value={wallet ? String(wallet.has_position) : "—"} />
+                <InfoRow label="Entry price"      value={wallet && wallet.entry_price} />
+                <InfoRow label="Position qty"     value={wallet && wallet.position_qty} />
+                <InfoRow label="Equity"           value={wallet && wallet.equity}          highlight="cyan" />
+                <InfoRow label="Position PnL"     value={wallet && wallet.position_pnl}    highlight={pnlHighlight} />
+                <InfoRow label="Daily PnL"        value={wallet && wallet.daily_pnl}       highlight={pnlHighlight} />
               </div>
             </div>
 
             <div className="card">
-              <h2>Paramètres</h2>
+              <h2>Parametres</h2>
               <form onSubmit={handleUpdateSettings} className="settings-form">
                 <label>
                   Symbol
-                  <input
-                    name="symbol"
-                    value={form.symbol}
-                    onChange={handleInputChange}
-                    placeholder="BTCUSDT"
-                  />
+                  <input name="symbol" value={form.symbol} onChange={handleInputChange} placeholder="BTCUSDT" />
                 </label>
-
                 <label>
                   Interval
-                  <select
-                    name="interval"
-                    value={form.interval}
-                    onChange={handleInputChange}
-                  >
-                    <option value="1m">1m</option>
-                    <option value="3m">3m</option>
-                    <option value="5m">5m</option>
-                    <option value="15m">15m</option>
-                    <option value="30m">30m</option>
-                    <option value="1h">1h</option>
-                    <option value="2h">2h</option>
-                    <option value="4h">4h</option>
-                    <option value="6h">6h</option>
-                    <option value="8h">8h</option>
-                    <option value="12h">12h</option>
-                    <option value="1d">1d</option>
+                  <select name="interval" value={form.interval} onChange={handleInputChange}>
+                    {intervals.map(function(v) { return <option key={v} value={v}>{v}</option>; })}
                   </select>
                 </label>
-
                 <label>
                   Take Profit USD
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="take_profit_usd"
-                    value={form.take_profit_usd}
-                    onChange={handleInputChange}
-                  />
+                  <input type="number" step="0.01" name="take_profit_usd" value={form.take_profit_usd} onChange={handleInputChange} />
                 </label>
-
                 <label>
                   Stop Loss USD
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="stop_loss_usd"
-                    value={form.stop_loss_usd}
-                    onChange={handleInputChange}
-                  />
+                  <input type="number" step="0.01" name="stop_loss_usd" value={form.stop_loss_usd} onChange={handleInputChange} />
                 </label>
-
                 <label>
                   Capital initial
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="initial_balance"
-                    value={form.initial_balance}
-                    onChange={handleInputChange}
-                  />
+                  <input type="number" step="0.01" name="initial_balance" value={form.initial_balance} onChange={handleInputChange} />
                 </label>
-
                 <button type="submit" disabled={actionLoading}>
-                  Sauvegarder les paramètres
+                  Sauvegarder les parametres
                 </button>
               </form>
 
               {settings && (
                 <div className="current-settings">
-                  <h3>Paramètres actuels</h3>
-                  <div><strong>Symbol:</strong> {settings.symbol}</div>
-                  <div><strong>Interval:</strong> {settings.interval}</div>
-                  <div><strong>TP:</strong> {settings.take_profit_usd}</div>
-                  <div><strong>SL:</strong> {settings.stop_loss_usd}</div>
-                  <div><strong>Capital:</strong> {settings.initial_balance}</div>
+                  <h3>Parametres actifs</h3>
+                  <div><strong>Symbol</strong>   <span>{settings.symbol}</span></div>
+                  <div><strong>Interval</strong> <span>{settings.interval}</span></div>
+                  <div><strong>TP</strong>        <span>{settings.take_profit_usd}</span></div>
+                  <div><strong>SL</strong>        <span>{settings.stop_loss_usd}</span></div>
+                  <div><strong>Capital</strong>  <span>{settings.initial_balance}</span></div>
                 </div>
               )}
             </div>
@@ -302,17 +306,19 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {trades.map((trade) => (
-                        <tr key={trade.id}>
-                          <td>{trade.id}</td>
-                          <td>{trade.side}</td>
-                          <td>{trade.entry_price}</td>
-                          <td>{trade.exit_price}</td>
-                          <td>{trade.quantity}</td>
-                          <td>{trade.pnl}</td>
-                          <td>{trade.reason}</td>
-                        </tr>
-                      ))}
+                      {trades.map(function(t) {
+                        return (
+                          <tr key={t.id}>
+                            <td>{t.id}</td>
+                            <td style={{ color: t.side === "BUY" ? "var(--accent-green)" : "var(--accent-red)", fontWeight: 600 }}>{t.side}</td>
+                            <td>{t.entry_price}</td>
+                            <td>{t.exit_price}</td>
+                            <td>{t.quantity}</td>
+                            <td style={{ color: t.pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)", fontWeight: 600 }}>{t.pnl}</td>
+                            <td>{t.reason}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -325,18 +331,29 @@ function App() {
                 <p>Aucun log pour le moment.</p>
               ) : (
                 <div className="logs-box">
-                  {logs.map((log) => (
-                    <div key={log.id} className="log-item">
-                      <div className="log-date">{log.created_at}</div>
-                      <div className="log-message">{log.message}</div>
-                    </div>
-                  ))}
+                  {logs.map(function(log) {
+                    return (
+                      <div key={log.id} className="log-item">
+                        <div className="log-date">{log.created_at}</div>
+                        <div className="log-message">{log.message}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
           </section>
-        </>
+        </div>
       )}
+
+      <footer style={{ marginTop: "40px", paddingTop: "24px", borderTop: "1px solid var(--glass-border)", display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+        <span style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>Built by</span>
+        <FooterLink />
+        <span style={{ color: "var(--text-muted)", fontSize: "0.72rem", fontFamily: "monospace" }}>
+          NexTrade v1 &copy; {new Date().getFullYear()}
+        </span>
+      </footer>
+
     </div>
   );
 }

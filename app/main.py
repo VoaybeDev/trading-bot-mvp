@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .bot import TradingBot
@@ -9,6 +10,15 @@ from .db import fetch_logs, fetch_trades
 from .settings import get_settings, reset_settings, update_settings
 
 app = FastAPI(title="Trading Bot MVP - Real Market Data")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 bot = TradingBot()
 
 
