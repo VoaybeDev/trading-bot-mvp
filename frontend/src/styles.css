@@ -31,9 +31,7 @@
   --radius-sm: 10px;
 }
 
-html {
-  scroll-behavior: smooth;
-}
+html { scroll-behavior: smooth; }
 
 body {
   font-family: 'Space Grotesk', sans-serif;
@@ -89,10 +87,6 @@ body::before {
 .header-brand h1 {
   font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: 700;
-  background: var(--gradient-accent);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
   letter-spacing: -0.03em;
   margin-bottom: 6px;
 }
@@ -105,6 +99,7 @@ body::before {
   text-transform: uppercase;
 }
 
+/* ── BADGE ── */
 .badge {
   display: flex;
   align-items: center;
@@ -115,8 +110,6 @@ body::before {
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  position: relative;
-  overflow: hidden;
 }
 
 .badge::before {
@@ -153,6 +146,179 @@ body::before {
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* ── STATUS OFFLINE (header) ── */
+.status-offline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 59, 107, 0.1);
+  border: 1px solid rgba(255, 59, 107, 0.25);
+  color: #fca5a5;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+/* ── OFFLINE BANNER ── */
+.offline-banner {
+  background: linear-gradient(135deg, rgba(255, 59, 107, 0.1), rgba(255, 140, 66, 0.06));
+  border: 1px solid rgba(255, 59, 107, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  animation: slideIn 0.3s ease;
+}
+
+.offline-bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.offline-bar-fill {
+  height: 100%;
+  background: var(--gradient-danger);
+  border-radius: 3px;
+  transition: width 1s linear;
+}
+
+.offline-dot-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-red);
+  display: inline-block;
+  flex-shrink: 0;
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+/* ── MODAL ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 8, 23, 0.85);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-box {
+  background: linear-gradient(135deg, #0d1f3a, #0a1628);
+  border: 1px solid rgba(255, 59, 107, 0.3);
+  border-radius: var(--radius);
+  padding: 36px 32px;
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(255, 59, 107, 0.1);
+  animation: scaleIn 0.2s ease;
+}
+
+.modal-icon {
+  font-size: 2.5rem;
+  margin-bottom: 16px;
+  color: var(--accent-orange);
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+  letter-spacing: -0.02em;
+}
+
+.modal-message {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 28px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.modal-btn {
+  padding: 11px 28px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.modal-btn.cancel {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.modal-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.modal-btn.confirm {
+  background: linear-gradient(135deg, rgba(255, 59, 107, 0.2), rgba(255, 140, 66, 0.12));
+  border-color: rgba(255, 59, 107, 0.4);
+  color: #ff8fa8;
+}
+
+.modal-btn.confirm:hover {
+  background: linear-gradient(135deg, rgba(255, 59, 107, 0.35), rgba(255, 140, 66, 0.2));
+  border-color: rgba(255, 59, 107, 0.7);
+  box-shadow: 0 0 20px rgba(255, 59, 107, 0.2);
+  color: #ffccd5;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ── MINI CHART ── */
+.chart-wrap {
+  padding: 4px 0;
+}
+
+.chart-labels {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.chart-empty {
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-style: italic;
+  border: 1px dashed rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
 }
 
 /* ── ALERTS ── */
@@ -206,16 +372,7 @@ body::before {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   transition: all 0.2s ease;
-  overflow: hidden;
-}
-
-.actions button::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--gradient-accent);
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .actions button:hover:not(:disabled) {
@@ -225,10 +382,6 @@ body::before {
   transform: translateY(-1px);
 }
 
-.actions button:hover:not(:disabled)::before {
-  opacity: 0.06;
-}
-
 .actions button:active:not(:disabled) {
   transform: translateY(0);
 }
@@ -236,6 +389,19 @@ body::before {
 .actions button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* Bouton Reset danger */
+.actions button.btn-danger {
+  border-color: rgba(255, 59, 107, 0.25);
+  color: #ff8fa8;
+}
+
+.actions button.btn-danger:hover:not(:disabled) {
+  border-color: rgba(255, 59, 107, 0.5);
+  box-shadow: 0 0 20px rgba(255, 59, 107, 0.15);
+  color: var(--accent-red);
+  background: rgba(255, 59, 107, 0.06);
 }
 
 /* ── GRID ── */
@@ -326,7 +492,7 @@ body::before {
   letter-spacing: 0.03em;
 }
 
-.info-list > div > *:last-child {
+.info-list > div > span {
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.85rem;
   color: var(--text-primary);
@@ -361,6 +527,7 @@ body::before {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   outline: none;
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .settings-form select {
@@ -382,7 +549,6 @@ body::before {
 }
 
 .settings-form button[type='submit'] {
-  position: relative;
   background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(168, 85, 247, 0.1));
   border: 1px solid rgba(0, 212, 255, 0.3);
   color: var(--accent-cyan);
@@ -395,26 +561,13 @@ body::before {
   text-transform: uppercase;
   transition: all 0.2s ease;
   margin-top: 4px;
-  overflow: hidden;
-}
-
-.settings-form button[type='submit']::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(0, 212, 255, 0.15), rgba(168, 85, 247, 0.1));
-  opacity: 0;
-  transition: opacity 0.2s;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .settings-form button[type='submit']:hover:not(:disabled) {
   border-color: rgba(0, 212, 255, 0.6);
   box-shadow: 0 0 24px rgba(0, 212, 255, 0.2);
   transform: translateY(-1px);
-}
-
-.settings-form button[type='submit']:hover:not(:disabled)::after {
-  opacity: 1;
 }
 
 .settings-form button[type='submit']:disabled {
@@ -575,7 +728,6 @@ tbody tr:last-child td {
 }
 
 .card.loading-state::before {
-  content: '';
   display: none;
 }
 
@@ -595,40 +747,18 @@ tbody tr:last-child td {
 
 /* ── RESPONSIVE ── */
 @media (max-width: 768px) {
-  .page {
-    padding: 20px 16px;
-  }
-
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .header-brand h1 {
-    font-size: 1.5rem;
-  }
-
-  .grid.two {
-    grid-template-columns: 1fr;
-  }
-
-  .actions {
-    gap: 8px;
-  }
-
-  .actions button {
-    padding: 9px 16px;
-    font-size: 0.78rem;
-  }
-
-  .card {
-    padding: 18px;
-  }
+  .page { padding: 20px 16px; }
+  .header { flex-direction: column; align-items: flex-start; }
+  .header-brand h1 { font-size: 1.5rem; }
+  .grid.two { grid-template-columns: 1fr; }
+  .actions { gap: 8px; }
+  .actions button { padding: 9px 16px; font-size: 0.78rem; }
+  .card { padding: 18px; }
+  .modal-box { padding: 28px 20px; }
+  .modal-actions { flex-direction: column; }
+  .modal-btn { width: 100%; }
 }
 
 @media (max-width: 480px) {
-  .actions button {
-    flex: 1;
-    min-width: 0;
-  }
+  .actions button { flex: 1; min-width: 0; }
 }
