@@ -35,9 +35,14 @@ function FooterLink() {
     boxShadow: hovered ? "0 0 18px rgba(0,212,255,0.12)" : "none",
   };
   return (
-    <a href="https://github.com/VoaybeDev" target="_blank" rel="noopener noreferrer" style={style}
+    <a
+      href="https://github.com/VoaybeDev"
+      target="_blank"
+      rel="noopener noreferrer"
+      style={style}
       onMouseEnter={function() { setHovered(true); }}
-      onMouseLeave={function() { setHovered(false); }}>
+      onMouseLeave={function() { setHovered(false); }}
+    >
       <GitHubIcon />
       VoaybeDev
     </a>
@@ -45,7 +50,11 @@ function FooterLink() {
 }
 
 function InfoRow(props) {
-  const colorMap = { green: "var(--accent-green)", red: "var(--accent-red)", cyan: "var(--accent-cyan)" };
+  const colorMap = {
+    green: "var(--accent-green)",
+    red: "var(--accent-red)",
+    cyan: "var(--accent-cyan)",
+  };
   return (
     <div>
       <strong>{props.label}</strong>
@@ -110,7 +119,11 @@ function MiniChart(props) {
 
   return (
     <div className="chart-wrap">
-      <svg viewBox={"0 0 " + W + " " + H} preserveAspectRatio="none" style={{ width: "100%", height: H + "px", display: "block" }}>
+      <svg
+        viewBox={"0 0 " + W + " " + H}
+        preserveAspectRatio="none"
+        style={{ width: "100%", height: H + "px", display: "block" }}
+      >
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.25" />
@@ -118,12 +131,21 @@ function MiniChart(props) {
           </linearGradient>
         </defs>
         <polygon points={fillPts} fill={"url(#" + gid + ")"} />
-        <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        <polyline
+          points={pts.join(" ")}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
         <circle cx={lastX} cy={lastY} r="2.5" fill={color} />
       </svg>
       <div className="chart-labels">
         <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>{first.toFixed(4)}</span>
-        <span style={{ color: diff >= 0 ? "var(--accent-green)" : "var(--accent-red)", fontSize: "0.75rem", fontWeight: 600 }}>{diffStr}</span>
+        <span style={{ color: diff >= 0 ? "var(--accent-green)" : "var(--accent-red)", fontSize: "0.75rem", fontWeight: 600 }}>
+          {diffStr}
+        </span>
         <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>{last.toFixed(4)}</span>
       </div>
     </div>
@@ -147,6 +169,7 @@ function OfflineBanner(props) {
   );
 }
 
+// ─── MAIN APP ───────────────────────────────────────────────────────────────
 function App() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -199,6 +222,8 @@ function App() {
     }, 1000);
   }
 
+  // FIX 1 : useCallback pour stabiliser la reference de loadStatus
+  // FIX 2 : catch sans variable (err etait defini mais non utilise)
   const loadStatus = useCallback(async function() {
     try {
       setLoading(true);
@@ -209,6 +234,7 @@ function App() {
       syncForm(data && data.settings);
       pushHistory(data);
     } catch {
+      // err supprime car non utilise — on gere juste le state offline
       setIsOffline(true);
       startCountdown();
     } finally {
@@ -216,6 +242,7 @@ function App() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // FIX 3 : loadStatus dans le tableau de dependances de useEffect
   useEffect(function() {
     loadStatus();
     const id = setInterval(loadStatus, 5000);
@@ -271,21 +298,21 @@ function App() {
     setForm(function(p) { return Object.assign({}, p, { [name]: value }); });
   }
 
-  const market = status && status.market;
+  const market   = status && status.market;
   const settings = status && status.settings;
-  const wallet = status && status.wallet;
-  const signal = status && status.last_signal;
-  const trades = (status && status.trades) || [];
-  const logs = (status && status.logs) || [];
+  const wallet   = status && status.wallet;
+  const signal   = status && status.last_signal;
+  const trades   = (status && status.trades) || [];
+  const logs     = (status && status.logs) || [];
 
   const pnlHL = wallet && wallet.daily_pnl > 0 ? "green" : wallet && wallet.daily_pnl < 0 ? "red" : null;
   const sigHL = signal && signal.signal === "BUY" ? "green" : signal && signal.signal === "SELL" ? "red" : null;
 
-  const eqLast = equityHistory.length >= 2 ? equityHistory[equityHistory.length - 1].value : null;
+  const eqLast  = equityHistory.length >= 2 ? equityHistory[equityHistory.length - 1].value : null;
   const eqFirst = equityHistory.length >= 2 ? equityHistory[0].value : null;
   const eqColor = eqLast !== null && eqLast >= eqFirst ? "#00ff88" : "#ff3b6b";
 
-  const pnlLast = pnlHistory.length >= 2 ? pnlHistory[pnlHistory.length - 1].value : 0;
+  const pnlLast  = pnlHistory.length >= 2 ? pnlHistory[pnlHistory.length - 1].value : 0;
   const pnlColor = pnlLast >= 0 ? "#00ff88" : "#ff3b6b";
 
   const intervals = ["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d"];
@@ -306,6 +333,7 @@ function App() {
         />
       )}
 
+      {/* ── HEADER ── */}
       <header className="header">
         <div className="header-brand">
           <h1>
@@ -328,15 +356,16 @@ function App() {
         </div>
       </header>
 
-      {isOffline && <OfflineBanner retryIn={retryIn} />}
-      {error && <div className="alert error">{error}</div>}
-      {message && <div className="alert success">{message}</div>}
+      {isOffline  && <OfflineBanner retryIn={retryIn} />}
+      {error      && <div className="alert error">{error}</div>}
+      {message    && <div className="alert success">{message}</div>}
 
+      {/* ── ACTIONS ── */}
       <section className="actions">
         <button onClick={function() { handleAction(loadStatus, "Donnees actualisees"); }} disabled={actionLoading}>Refresh</button>
-        <button onClick={function() { handleAction(startBot, "Bot demarre"); }} disabled={actionLoading}>Start</button>
-        <button onClick={function() { handleAction(stopBot, "Bot arrete"); }} disabled={actionLoading}>Stop</button>
-        <button onClick={function() { handleAction(tickBot, "Tick execute"); }} disabled={actionLoading}>Tick</button>
+        <button onClick={function() { handleAction(startBot,   "Bot demarre");         }} disabled={actionLoading}>Start</button>
+        <button onClick={function() { handleAction(stopBot,    "Bot arrete");          }} disabled={actionLoading}>Stop</button>
+        <button onClick={function() { handleAction(tickBot,    "Tick execute");        }} disabled={actionLoading}>Tick</button>
         <button className="btn-danger" onClick={function() { setShowResetModal(true); }} disabled={actionLoading}>Reset</button>
       </section>
 
@@ -348,6 +377,7 @@ function App() {
       ) : (
         <div>
 
+          {/* ── CHARTS ── */}
           <section className="grid two">
             <div className="card">
               <h2>Equity en temps reel</h2>
@@ -366,12 +396,15 @@ function App() {
               {wallet && (
                 <div style={{ marginTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: "var(--text-secondary)", fontSize: "0.8rem" }}>Daily PnL</span>
-                  <span style={{ color: wallet.daily_pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)", fontFamily: "monospace", fontWeight: 600 }}>{wallet.daily_pnl}</span>
+                  <span style={{ color: wallet.daily_pnl >= 0 ? "var(--accent-green)" : "var(--accent-red)", fontFamily: "monospace", fontWeight: 600 }}>
+                    {wallet.daily_pnl}
+                  </span>
                 </div>
               )}
             </div>
           </section>
 
+          {/* ── MARCHE + SIGNAL ── */}
           <section className="grid two">
             <div className="card">
               <h2>Marche</h2>
@@ -394,6 +427,7 @@ function App() {
             </div>
           </section>
 
+          {/* ── WALLET + PARAMS ── */}
           <section className="grid two">
             <div className="card">
               <h2>Wallet</h2>
@@ -412,31 +446,40 @@ function App() {
             <div className="card">
               <h2>Parametres</h2>
               <form onSubmit={handleUpdateSettings} className="settings-form">
-                <label>Symbol<input name="symbol" value={form.symbol} onChange={handleInputChange} placeholder="BTCUSDT" /></label>
-                <label>
-                  Interval
+                <label>Symbol
+                  <input name="symbol" value={form.symbol} onChange={handleInputChange} placeholder="BTCUSDT" />
+                </label>
+                <label>Interval
                   <select name="interval" value={form.interval} onChange={handleInputChange}>
                     {intervals.map(function(v) { return <option key={v} value={v}>{v}</option>; })}
                   </select>
                 </label>
-                <label>Take Profit USD<input type="number" step="0.01" name="take_profit_usd" value={form.take_profit_usd} onChange={handleInputChange} /></label>
-                <label>Stop Loss USD<input type="number" step="0.01" name="stop_loss_usd" value={form.stop_loss_usd} onChange={handleInputChange} /></label>
-                <label>Capital initial<input type="number" step="0.01" name="initial_balance" value={form.initial_balance} onChange={handleInputChange} /></label>
+                <label>Take Profit USD
+                  <input type="number" step="0.01" name="take_profit_usd" value={form.take_profit_usd} onChange={handleInputChange} />
+                </label>
+                <label>Stop Loss USD
+                  <input type="number" step="0.01" name="stop_loss_usd" value={form.stop_loss_usd} onChange={handleInputChange} />
+                </label>
+                <label>Capital initial
+                  <input type="number" step="0.01" name="initial_balance" value={form.initial_balance} onChange={handleInputChange} />
+                </label>
                 <button type="submit" disabled={actionLoading}>Sauvegarder les parametres</button>
               </form>
+
               {settings && (
                 <div className="current-settings">
                   <h3>Parametres actifs</h3>
-                  <div><strong>Symbol</strong><span>{settings.symbol}</span></div>
+                  <div><strong>Symbol</strong>  <span>{settings.symbol}</span></div>
                   <div><strong>Interval</strong><span>{settings.interval}</span></div>
-                  <div><strong>TP</strong><span>{settings.take_profit_usd}</span></div>
-                  <div><strong>SL</strong><span>{settings.stop_loss_usd}</span></div>
-                  <div><strong>Capital</strong><span>{settings.initial_balance}</span></div>
+                  <div><strong>TP</strong>       <span>{settings.take_profit_usd}</span></div>
+                  <div><strong>SL</strong>       <span>{settings.stop_loss_usd}</span></div>
+                  <div><strong>Capital</strong> <span>{settings.initial_balance}</span></div>
                 </div>
               )}
             </div>
           </section>
 
+          {/* ── TRADES + LOGS ── */}
           <section className="grid two">
             <div className="card">
               <h2>Trades</h2>
@@ -490,6 +533,7 @@ function App() {
         </div>
       )}
 
+      {/* ── FOOTER ── */}
       <footer style={{ marginTop: "40px", paddingTop: "24px", borderTop: "1px solid var(--glass-border)", display: "flex", justifyContent: "center", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
         <span style={{ color: "var(--text-muted)", fontSize: "0.78rem" }}>Built by</span>
         <FooterLink />

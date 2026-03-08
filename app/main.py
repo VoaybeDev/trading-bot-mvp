@@ -1,112 +1,139 @@
 import asyncio
+import os
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
 from .bot import TradingBot
 from .db import fetch_logs, fetch_trades
 from .settings import get_settings, reset_settings, update_settings
 
+# ─── CONFIG ─────────────────────────────────────────────────────────────────
+# Cle API lue depuis la variable d'environnement API_KEY
+# Si API_KEY n'est pas definie, le serveur demarre mais affiche un avertissement
+API_KEY_VALUE = os.environ.get("API_KEY", "")
+API_KEY_NAME  = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+def verify_api_key(key: str = Security(api_key_header)) -> bool:
+    """
+    Valide la cle API passee dans le header X-API-Key.
+    Si API_KEY n'est pas configuree dans .env, la protection est desactivee
+    et un warning est affiche au demarrage.
+    """
+    if not API_KEY_VALUE:
+        # Pas de cle configuree -> acces libre (mode dev)
+        return True
+    if key != API_KEY_VALUE:
+        raise HTTPException(status_code=403, detail="Cle API invalide ou manquante")
+    return True
+
+# ─── APP ────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Trading Bot MVP - Real Market Data")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def on_startup():
+    if not API_KEY_VALUE:
+        print("\n⚠️  AVERTISSEMENT : Variable d'environnement API_KEY non definie.")
+        print("   Le serveur tourne en mode DEV sans authentification.")
+        print("   Ajoutez API_KEY=votre_cle_secrete dans votre fichier .env\n")
+
 bot = TradingBot()
 
-
+# ─── SCHEMAS ────────────────────────────────────────────────────────────────
 class SettingsUpdatePayload(BaseModel):
-    symbol: Optional[str] = None
-    interval: Optional[str] = None
-    take_profit_usd: Optional[float] = None
-    stop_loss_usd: Optional[float] = None
-    initial_balance: Optional[float] = None
+    symbol:           Optional[str]   = None
+    interval:         Optional[str]   = None
+    take_profit_usd:  Optional[float] = None
+    stop_loss_usd:    Optional[float] = None
+    initial_balance:  Optional[float] = None
 
-
+# ─── ROUTES PUBLIQUES ───────────────────────────────────────────────────────
 @app.get("/")
 def root():
     return {"message": "Trading Bot MVP actif"}
 
-
+# ─── ROUTES PROTEGEES ───────────────────────────────────────────────────────
 @app.get("/status")
-def status():
+def status(auth: bool = Security(verify_api_key)):
     return bot.snapshot()
-
 
 @app.post("/start")
-async def start():
+async def start(auth: bool = Security(verify_api_key)):
     if not bot.running:
         bot.running = True
-        bot._log("Bot démarré")
+        bot._log("Bot demarre")
         asyncio.create_task(bot.run_loop())
     else:
-        bot._log("Start ignoré: bot déjà en marche")
+        bot._log("Start ignore: bot deja en marche")
     return bot.snapshot()
-
 
 @app.post("/stop")
-def stop():
+def stop(auth: bool = Security(verify_api_key)):
     bot.running = False
-    bot._log("Bot arrêté manuellement")
+    bot._log("Bot arrete manuellement")
     return bot.snapshot()
 
-
 @app.post("/tick")
-def tick():
+def tick(auth: bool = Security(verify_api_key)):
     bot.tick()
     return bot.snapshot()
 
-
 @app.get("/trades")
-def trades():
+def trades(auth: bool = Security(verify_api_key)):
     return fetch_trades(limit=100)
 
-
 @app.get("/logs")
-def logs():
+def logs(auth: bool = Security(verify_api_key)):
     return fetch_logs(limit=100)
 
-
 @app.post("/reset")
-def reset():
+def reset(auth: bool = Security(verify_api_key)):
     bot.reset()
     return bot.snapshot()
 
-
 @app.get("/settings")
-def read_settings():
+def read_settings(auth: bool = Security(verify_api_key)):
     return get_settings()
 
-
 @app.post("/settings/update")
-def api_update_settings(payload: SettingsUpdatePayload):
+def api_update_settings(
+    payload: SettingsUpdatePayload,
+    auth: bool = Security(verify_api_key),
+):
     try:
         updated = update_settings(**payload.model_dump(exclude_none=True))
         bot.reset()
-        bot._log(f"Paramètres mis à jour: {updated}")
+        bot._log(f"Parametres mis a jour: {updated}")
         return {
-            "message": "Paramètres mis à jour et bot réinitialisé",
+            "message": "Parametres mis a jour et bot reinitialise",
             "settings": updated,
             "status": bot.snapshot(),
         }
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-
 @app.post("/settings/reset")
-def api_reset_settings():
+def api_reset_settings(auth: bool = Security(verify_api_key)):
     settings = reset_settings()
     bot.reset()
-    bot._log("Paramètres réinitialisés aux valeurs par défaut")
+    bot._log("Parametres reinitialises aux valeurs par defaut")
     return {
-        "message": "Paramètres réinitialisés",
+        "message": "Parametres reinitialises",
         "settings": settings,
         "status": bot.snapshot(),
     }
