@@ -10,11 +10,11 @@ from pydantic import BaseModel
 
 from .bot import TradingBot
 from .db import fetch_logs, fetch_trades
-from .health import build_health_report                          # ← AJOUT
+from .health import build_health_report
 from .settings import get_settings, reset_settings, update_settings
+from .notifier import notify_bot_started, notify_bot_stopped
 
-from datetime import datetime
-from pydantic import BaseModel
+from datetime import datetime, timedelta
 from .backtest import fetch_klines, run_backtest
 
 # ─── CONFIG ─────────────────────────────────────────────────────────────────
@@ -63,11 +63,12 @@ class SettingsUpdatePayload(BaseModel):
 class BacktestRequest(BaseModel):
     symbol:          str   = "BTCUSDT"
     interval:        str   = "1m"
-    start:           str   = ""   # ISO datetime string ex: "2026-03-01T00:00"
-    end:             str   = ""   # ISO datetime string ex: "2026-03-08T00:00"
+    start:           str   = ""
+    end:             str   = ""
     initial_balance: float = 8.0
     take_profit_usd: float = 1.0
     stop_loss_usd:   float = -1.0
+
 # ─── ROUTES PUBLIQUES ───────────────────────────────────────────────────────
 @app.get("/")
 def root():
@@ -78,9 +79,9 @@ def root():
 def status(auth: bool = Security(verify_api_key)):
     return bot.snapshot()
 
-@app.get("/health")                                              # ← AJOUT
-def api_health(auth: bool = Security(verify_api_key)):          # ← AJOUT
-    return build_health_report(bot)                             # ← AJOUT
+@app.get("/health")
+def api_health(auth: bool = Security(verify_api_key)):
+    return build_health_report(bot)
 
 @app.post("/start")
 async def start(auth: bool = Security(verify_api_key)):
@@ -88,14 +89,16 @@ async def start(auth: bool = Security(verify_api_key)):
         bot.running = True
         bot._log("Bot demarre")
         asyncio.create_task(bot.run_loop())
+        await notify_bot_started(bot.symbol, bot.interval)
     else:
         bot._log("Start ignore: bot deja en marche")
     return bot.snapshot()
 
 @app.post("/stop")
-def stop(auth: bool = Security(verify_api_key)):
+async def stop(auth: bool = Security(verify_api_key)):
     bot.running = False
     bot._log("Bot arrete manuellement")
+    await notify_bot_stopped("Manuel")
     return bot.snapshot()
 
 @app.post("/tick")
@@ -151,9 +154,6 @@ def api_reset_settings(auth: bool = Security(verify_api_key)):
 @app.post("/backtest")
 async def backtest(req: BacktestRequest, _: bool = Security(verify_api_key)):
     """Lance un backtest sur les données historiques Binance."""
-    from datetime import datetime, timedelta
-
-    # Dates par défaut : 7 derniers jours
     if req.end:
         end_dt = datetime.fromisoformat(req.end)
     else:

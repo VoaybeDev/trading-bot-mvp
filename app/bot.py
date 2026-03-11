@@ -6,6 +6,14 @@ from .market_data import MarketDataError, get_latest_price, get_recent_closes
 from .paper_wallet import PaperWallet
 from .settings import get_settings, init_settings
 from .strategy import analyze
+from .notifier import (
+    notify_buy,
+    notify_sell,
+    notify_take_profit,
+    notify_stop_loss,
+    notify_error,
+    notify_bot_auto_stopped,
+)
 
 # Nombre de tentatives max lors d'une erreur réseau Binance
 MAX_RETRY = 3
@@ -13,6 +21,18 @@ MAX_RETRY = 3
 RETRY_DELAY = 2.0
 # Délai entre chaque tick du run_loop (secondes)
 TICK_INTERVAL = 5.0
+
+
+def _fire(coro):
+    """Lance une coroutine en fire-and-forget dans la boucle asyncio courante."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(coro)
+        else:
+            loop.run_until_complete(coro)
+    except Exception:
+        pass
 
 
 class TradingBot:
@@ -26,9 +46,7 @@ class TradingBot:
         self.prices = deque(maxlen=100)
         self.current_price = 0.0
 
-        # Compteur d'erreurs réseau consécutives
         self._consecutive_errors = 0
-        # Nombre max d'erreurs consécutives avant d'arrêter le bot
         self._max_consecutive_errors = 5
 
         self.last_signal = {
@@ -57,11 +75,6 @@ class TradingBot:
     # ─── MARCHÉ AVEC RETRY ───────────────────────────────────────────────────
 
     def _refresh_market(self):
-        """
-        Rafraîchit les données de marché depuis Binance.
-        Réessaie jusqu'à MAX_RETRY fois en cas d'erreur réseau.
-        Lève MarketDataError si toutes les tentatives échouent.
-        """
         last_exc = None
 
         for attempt in range(1, MAX_RETRY + 1):
@@ -78,7 +91,6 @@ class TradingBot:
                 self.current_price = latest_price
                 self.last_signal = analyze(list(self.prices))
 
-                # Succès — réinitialise le compteur d'erreurs
                 self._consecutive_errors = 0
                 return
 
@@ -89,17 +101,14 @@ class TradingBot:
                         f"Erreur réseau Binance (tentative {attempt}/{MAX_RETRY}): {exc} "
                         f"— nouvelle tentative dans {RETRY_DELAY}s"
                     )
-                    # Pause synchrone entre les retries
                     import time
                     time.sleep(RETRY_DELAY)
 
             except Exception as exc:
-                # Erreur inattendue (JSON malformé, timeout SSL, etc.)
                 last_exc = MarketDataError(f"Erreur inattendue: {exc}")
                 self._log(f"Erreur inattendue lors du refresh marché: {exc}")
                 break
 
-        # Toutes les tentatives ont échoué
         self._consecutive_errors += 1
         self._log(
             f"Echec après {MAX_RETRY} tentatives. "
@@ -108,7 +117,6 @@ class TradingBot:
         raise last_exc
 
     def _seed_prices(self):
-        """Initialisation au démarrage — ne bloque pas si le réseau est indisponible."""
         try:
             self._refresh_market()
             self._log(
@@ -130,22 +138,19 @@ class TradingBot:
     # ─── TICK ────────────────────────────────────────────────────────────────
 
     def tick(self):
-        """
-        Exécute un cycle complet : refresh marché + logique de trading.
-        Arrête le bot automatiquement si trop d'erreurs consécutives.
-        """
         try:
             self._refresh_market()
         except MarketDataError as exc:
             self._log(f"Erreur marché pendant tick: {exc}")
+            _fire(notify_error(str(exc), self._consecutive_errors))
 
-            # Arrêt automatique si trop d'erreurs réseau d'affilée
             if self._consecutive_errors >= self._max_consecutive_errors:
                 self.running = False
                 self._log(
                     f"Bot arrêté automatiquement après {self._max_consecutive_errors} "
-                    f"erreurs réseau consécutives. Vérifiez votre connexion ou l'API Binance."
+                    f"erreurs réseau consécutives."
                 )
+                _fire(notify_bot_auto_stopped(self._consecutive_errors))
             return
 
         self._log(
@@ -153,7 +158,7 @@ class TradingBot:
             f"score={self.last_signal['score']} | strong={self.last_signal['strong']}"
         )
 
-        # ── Gestion position ouverte ──────────────────────────────────────
+        # ── Position ouverte ──────────────────────────────────────────────
         if self.wallet.has_position():
             pnl = self.wallet.position_pnl(self.current_price)
 
@@ -167,6 +172,7 @@ class TradingBot:
                     self.current_price, f"TP {self.take_profit_usd}$"
                 )
                 self._log(f"Trade gagnant fermé: {trade}")
+                _fire(notify_take_profit(self.symbol, self.current_price, pnl))
                 return
 
             if pnl <= self.stop_loss_usd:
@@ -175,6 +181,7 @@ class TradingBot:
                 )
                 self.running = False
                 self._log(f"Trade perdant fermé, bot stoppé: {trade}")
+                _fire(notify_stop_loss(self.symbol, self.current_price, pnl))
                 return
 
             self._log(
@@ -188,30 +195,30 @@ class TradingBot:
             order = self.wallet.open_long(self.current_price)
             if order:
                 self._log(f"Nouvelle position ouverte: {order}")
+                _fire(notify_buy(
+                    symbol=self.symbol,
+                    price=self.current_price,
+                    qty=self.wallet.position_qty,
+                    score=self.last_signal["score"],
+                ))
         else:
             self._log("Aucune entrée: attente d'un BUY fort")
 
     # ─── RUN LOOP ────────────────────────────────────────────────────────────
 
     async def run_loop(self):
-        """
-        Boucle principale asynchrone.
-        Gère les exceptions inattendues pour ne jamais crasher silencieusement.
-        """
         self._log("Boucle de trading démarrée")
         while self.running:
             try:
                 self.tick()
             except Exception as exc:
-                # Capture toute exception non prévue pour éviter un crash silencieux
                 self._log(f"Erreur critique inattendue dans run_loop: {exc}")
                 self._consecutive_errors += 1
+                await notify_error(str(exc), self._consecutive_errors)
                 if self._consecutive_errors >= self._max_consecutive_errors:
                     self.running = False
-                    self._log(
-                        "Bot arrêté suite à des erreurs critiques répétées. "
-                        "Consultez les logs pour diagnostiquer."
-                    )
+                    self._log("Bot arrêté suite à des erreurs critiques répétées.")
+                    await notify_bot_auto_stopped(self._consecutive_errors)
                     break
 
             await asyncio.sleep(TICK_INTERVAL)
@@ -250,7 +257,6 @@ class TradingBot:
             "wallet": self.wallet.status(self.current_price),
             "trades": fetch_trades(limit=20),
             "logs": fetch_logs(limit=20),
-            # Infos de santé réseau exposées au frontend
             "health": {
                 "consecutive_errors": self._consecutive_errors,
                 "max_consecutive_errors": self._max_consecutive_errors,
