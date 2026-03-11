@@ -1,189 +1,154 @@
-from .db import get_connection
+"""
+settings.py — Paramètres configurables de NexTrade.
+Fichier : trading-bot-mvp/app/settings.py
 
+Stocke les paramètres dans la table `settings` de la base SQLite.
+Utilise INSERT OR IGNORE pour la migration : les anciens enregistrements
+sont préservés, les nouvelles clés sont ajoutées avec leur valeur par défaut.
+"""
+import os
+import sqlite3
 
-DEFAULT_SETTINGS = {
-    "symbol": "BTCUSDT",
-    "interval": "1m",
-    "take_profit_usd": 1.0,
-    "stop_loss_usd": -1.0,
-    "initial_balance": 8.0,
+DB_PATH = os.path.join(os.path.dirname(__file__), "trading_bot.db")
+
+# ─── VALEURS PAR DÉFAUT ───────────────────────────────────────────────────────
+DEFAULTS: dict = {
+    # Paramètres de trading
+    "symbol":          "BTCUSDT",
+    "interval":        "1m",
+    "take_profit_usd": "1.0",
+    "stop_loss_usd":   "-1.0",
+    "initial_balance": "8.0",
+    # Mode de trading
+    "trading_mode":    "paper",   # "paper" | "real"
+    "order_size_pct":  "100.0",   # % du capital à engager (1–100)
+    "use_testnet":     "true",    # "true" | "false"
 }
 
-
-ALLOWED_INTERVALS = {
+VALID_INTERVALS = {
     "1m", "3m", "5m", "15m", "30m",
-    "1h", "2h", "4h", "6h", "8h", "12h",
-    "1d",
+    "1h", "2h", "4h", "6h", "12h", "1d",
 }
+VALID_MODES = {"paper", "real"}
 
 
-def init_settings():
-    conn = get_connection()
-    cur = conn.cursor()
+# ─── CONNEXION ────────────────────────────────────────────────────────────────
 
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS bot_settings (
-            id INTEGER PRIMARY KEY,
-            symbol TEXT NOT NULL,
-            interval TEXT NOT NULL,
-            take_profit_usd REAL NOT NULL,
-            stop_loss_usd REAL NOT NULL,
-            initial_balance REAL NOT NULL
-        )
-    """)
+def _conn():
+    return sqlite3.connect(DB_PATH)
 
-    row = cur.execute("SELECT id FROM bot_settings WHERE id = 1").fetchone()
 
-    if row is None:
-        cur.execute("""
-            INSERT INTO bot_settings (
-                id,
-                symbol,
-                interval,
-                take_profit_usd,
-                stop_loss_usd,
-                initial_balance
+# ─── INIT ─────────────────────────────────────────────────────────────────────
+
+def init_settings() -> None:
+    """
+    Crée la table settings si elle n'existe pas.
+    Insère les valeurs par défaut sans écraser les valeurs existantes.
+    Compatible avec les bases créées avant l'ajout des nouveaux champs.
+    """
+    with _conn() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
-            VALUES (1, ?, ?, ?, ?, ?)
-        """, (
-            DEFAULT_SETTINGS["symbol"],
-            DEFAULT_SETTINGS["interval"],
-            DEFAULT_SETTINGS["take_profit_usd"],
-            DEFAULT_SETTINGS["stop_loss_usd"],
-            DEFAULT_SETTINGS["initial_balance"],
-        ))
-
-    conn.commit()
-    conn.close()
+        """)
+        # INSERT OR IGNORE : préserve les valeurs existantes, ajoute les nouvelles
+        for key, value in DEFAULTS.items():
+            db.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        db.commit()
 
 
-def _validate_symbol(symbol):
-    if not isinstance(symbol, str) or not symbol.strip():
-        raise ValueError("symbol doit être une chaîne non vide")
-    return symbol.strip().upper()
+# ─── LECTURE ──────────────────────────────────────────────────────────────────
 
+def get_settings() -> dict:
+    """Retourne tous les paramètres sous forme de dict typé."""
+    with _conn() as db:
+        rows = db.execute("SELECT key, value FROM settings").fetchall()
 
-def _validate_interval(interval):
-    if not isinstance(interval, str) or interval not in ALLOWED_INTERVALS:
-        raise ValueError(
-            f"interval invalide. Valeurs autorisées: {sorted(ALLOWED_INTERVALS)}"
-        )
-    return interval
+    raw = {k: v for k, v in rows}
 
-
-def _validate_take_profit_usd(value):
-    value = float(value)
-    if value <= 0:
-        raise ValueError("take_profit_usd doit être > 0")
-    return value
-
-
-def _validate_stop_loss_usd(value):
-    value = float(value)
-    if value >= 0:
-        raise ValueError("stop_loss_usd doit être < 0")
-    return value
-
-
-def _validate_initial_balance(value):
-    value = float(value)
-    if value <= 0:
-        raise ValueError("initial_balance doit être > 0")
-    return value
-
-
-def get_settings():
-    init_settings()
-
-    conn = get_connection()
-    row = conn.execute("""
-        SELECT symbol, interval, take_profit_usd, stop_loss_usd, initial_balance
-        FROM bot_settings
-        WHERE id = 1
-    """).fetchone()
-    conn.close()
-
-    if row is None:
-        return DEFAULT_SETTINGS.copy()
+    # Migration douce : complète les clés manquantes avec les defaults
+    for key, default in DEFAULTS.items():
+        if key not in raw:
+            raw[key] = default
 
     return {
-        "symbol": row["symbol"],
-        "interval": row["interval"],
-        "take_profit_usd": float(row["take_profit_usd"]),
-        "stop_loss_usd": float(row["stop_loss_usd"]),
-        "initial_balance": float(row["initial_balance"]),
+        "symbol":          raw["symbol"],
+        "interval":        raw["interval"],
+        "take_profit_usd": float(raw["take_profit_usd"]),
+        "stop_loss_usd":   float(raw["stop_loss_usd"]),
+        "initial_balance": float(raw["initial_balance"]),
+        "trading_mode":    raw["trading_mode"],
+        "order_size_pct":  float(raw["order_size_pct"]),
+        "use_testnet":     raw["use_testnet"].lower() in ("true", "1", "yes"),
     }
 
 
-def update_settings(
-    symbol=None,
-    interval=None,
-    take_profit_usd=None,
-    stop_loss_usd=None,
-    initial_balance=None,
-):
-    init_settings()
-    current = get_settings()
+# ─── MISE À JOUR ──────────────────────────────────────────────────────────────
 
-    if symbol is not None:
-        current["symbol"] = _validate_symbol(symbol)
+def update_settings(**kwargs) -> dict:
+    """
+    Met à jour un ou plusieurs paramètres avec validation.
+    Lève ValueError si une valeur est invalide.
+    """
+    if "symbol" in kwargs:
+        if not str(kwargs["symbol"]).strip():
+            raise ValueError("symbol ne peut pas être vide")
 
-    if interval is not None:
-        current["interval"] = _validate_interval(interval)
+    if "interval" in kwargs:
+        if kwargs["interval"] not in VALID_INTERVALS:
+            raise ValueError(
+                f"interval invalide. Valeurs acceptées : {sorted(VALID_INTERVALS)}"
+            )
 
-    if take_profit_usd is not None:
-        current["take_profit_usd"] = _validate_take_profit_usd(take_profit_usd)
+    if "take_profit_usd" in kwargs:
+        if float(kwargs["take_profit_usd"]) <= 0:
+            raise ValueError("take_profit_usd doit être positif")
 
-    if stop_loss_usd is not None:
-        current["stop_loss_usd"] = _validate_stop_loss_usd(stop_loss_usd)
+    if "stop_loss_usd" in kwargs:
+        if float(kwargs["stop_loss_usd"]) >= 0:
+            raise ValueError("stop_loss_usd doit être négatif")
 
-    if initial_balance is not None:
-        current["initial_balance"] = _validate_initial_balance(initial_balance)
+    if "initial_balance" in kwargs:
+        if float(kwargs["initial_balance"]) <= 0:
+            raise ValueError("initial_balance doit être positif")
 
-    conn = get_connection()
-    conn.execute("""
-        UPDATE bot_settings
-        SET
-            symbol = ?,
-            interval = ?,
-            take_profit_usd = ?,
-            stop_loss_usd = ?,
-            initial_balance = ?
-        WHERE id = 1
-    """, (
-        current["symbol"],
-        current["interval"],
-        current["take_profit_usd"],
-        current["stop_loss_usd"],
-        current["initial_balance"],
-    ))
-    conn.commit()
-    conn.close()
+    if "trading_mode" in kwargs:
+        if kwargs["trading_mode"] not in VALID_MODES:
+            raise ValueError(
+                f"trading_mode invalide. Valeurs acceptées : {VALID_MODES}"
+            )
 
-    return current
+    if "order_size_pct" in kwargs:
+        pct = float(kwargs["order_size_pct"])
+        if not (1.0 <= pct <= 100.0):
+            raise ValueError("order_size_pct doit être entre 1 et 100")
+
+    with _conn() as db:
+        for key, value in kwargs.items():
+            if key in DEFAULTS:
+                db.execute(
+                    "UPDATE settings SET value = ? WHERE key = ?",
+                    (str(value), key),
+                )
+        db.commit()
+
+    return get_settings()
 
 
-def reset_settings():
-    init_settings()
+# ─── RESET ────────────────────────────────────────────────────────────────────
 
-    conn = get_connection()
-    conn.execute("""
-        UPDATE bot_settings
-        SET
-            symbol = ?,
-            interval = ?,
-            take_profit_usd = ?,
-            stop_loss_usd = ?,
-            initial_balance = ?
-        WHERE id = 1
-    """, (
-        DEFAULT_SETTINGS["symbol"],
-        DEFAULT_SETTINGS["interval"],
-        DEFAULT_SETTINGS["take_profit_usd"],
-        DEFAULT_SETTINGS["stop_loss_usd"],
-        DEFAULT_SETTINGS["initial_balance"],
-    ))
-    conn.commit()
-    conn.close()
-
+def reset_settings() -> dict:
+    """Remet tous les paramètres aux valeurs par défaut."""
+    with _conn() as db:
+        for key, value in DEFAULTS.items():
+            db.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+        db.commit()
     return get_settings()

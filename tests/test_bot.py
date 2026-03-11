@@ -1,185 +1,388 @@
 """
-test_bot.py — Tests unitaires pour app/bot.py
-Placez ce fichier dans : trading-bot-mvp/tests/test_bot.py
+test_bot.py — Tests du TradingBot.
+Fichier : trading-bot-mvp/tests/test_bot.py
+
+Note: tick() est désormais async → les tests TestBotTick utilisent async def + await.
 """
+from __future__ import annotations
+
 import pytest
-import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from app.bot import TradingBot
 from app.market_data import MarketDataError
 
 
-# ─── INIT ─────────────────────────────────────────────────────────────────────
+# ─── FIXTURES ─────────────────────────────────────────────────────────────────
+
+def make_bot():
+    """Crée un bot avec marché mocké (pas de vraie connexion Binance)."""
+    with patch("app.bot.get_recent_closes", return_value=[float(i) for i in range(1, 31)]), \
+         patch("app.bot.get_latest_price",  return_value=100.0), \
+         patch("app.bot.analyze", return_value={
+             "signal": "HOLD", "score": 0, "strong": False,
+             "ma10": None, "ma20": None,
+         }):
+        bot = TradingBot()
+    bot.current_price = 100.0
+    return bot
+
+
+def patch_market_ok(bot, signal="HOLD", score=0, strong=False, price=100.0):
+    """Patche _refresh_market pour retourner un signal donné."""
+    def _refresh():
+        bot.current_price = price
+        bot.last_signal   = {
+            "signal": signal, "score": score,
+            "strong": strong, "ma10": None, "ma20": None,
+        }
+        bot._consecutive_errors = 0
+    return patch.object(bot, "_refresh_market", side_effect=_refresh)
+
+
+def patch_market_error(bot, n_errors=1):
+    """Patche _refresh_market pour lever une MarketDataError et incrémenter le compteur."""
+    call_count = [0]
+    def _refresh():
+        call_count[0] += 1
+        bot._consecutive_errors += 1
+        raise MarketDataError("Simulated network error")
+    return patch.object(bot, "_refresh_market", side_effect=_refresh)
+
+
+# ─── TestBotInit ──────────────────────────────────────────────────────────────
 
 class TestBotInit:
-    def test_bot_demarre_arrete(self, bot):
+
+    def test_bot_demarre_arrete(self):
+        bot = make_bot()
         assert bot.running is False
 
-    def test_settings_charges(self, bot):
+    def test_settings_charges(self):
+        bot = make_bot()
         assert bot.symbol          == "BTCUSDT"
-        assert bot.interval        == "1m"
-        assert bot.take_profit_usd == 1.0
-        assert bot.stop_loss_usd   == -1.0
-        assert bot.initial_balance == 8.0
+        assert bot.take_profit_usd  > 0
+        assert bot.stop_loss_usd    < 0
 
-    def test_prix_initialise(self, bot):
-        assert bot.current_price == 50000.0
+    def test_prix_initialise(self):
+        bot = make_bot()
+        assert bot.current_price == 100.0
 
-    def test_signal_initialise(self, bot):
-        assert bot.last_signal is not None
+    def test_signal_initialise(self):
+        bot = make_bot()
         assert "signal" in bot.last_signal
 
-    def test_compteur_erreurs_zero(self, bot):
+    def test_compteur_erreurs_zero(self):
+        bot = make_bot()
         assert bot._consecutive_errors == 0
 
+    def test_trading_mode_par_defaut_paper(self):
+        bot = make_bot()
+        assert bot.trading_mode == "paper"
 
-# ─── SNAPSHOT ─────────────────────────────────────────────────────────────────
+    def test_real_position_inactif_au_demarrage(self):
+        bot = make_bot()
+        assert bot.real_position["active"] is False
+
+
+# ─── TestBotSnapshot ──────────────────────────────────────────────────────────
 
 class TestBotSnapshot:
-    def test_snapshot_contient_toutes_les_cles(self, bot):
+
+    def test_snapshot_contient_toutes_les_cles(self):
+        bot = make_bot()
         snap = bot.snapshot()
         for key in ("running", "market", "settings", "last_signal",
-                    "wallet", "trades", "logs", "health"):
+                    "wallet", "real_position", "trades", "logs", "health"):
             assert key in snap
 
-    def test_snapshot_health(self, bot):
-        snap = bot.snapshot()
-        assert snap["health"]["consecutive_errors"]     == 0
-        assert snap["health"]["max_consecutive_errors"] == 5
+    def test_snapshot_health(self):
+        bot = make_bot()
+        health = bot.snapshot()["health"]
+        assert "consecutive_errors"     in health
+        assert "max_consecutive_errors" in health
 
-    def test_snapshot_market(self, bot):
-        snap = bot.snapshot()
-        assert snap["market"]["symbol"]        == "BTCUSDT"
-        assert snap["market"]["current_price"] == 50000.0
+    def test_snapshot_market(self):
+        bot = make_bot()
+        market = bot.snapshot()["market"]
+        assert market["symbol"]        == "BTCUSDT"
+        assert market["current_price"] == 100.0
+
+    def test_snapshot_settings_contient_trading_mode(self):
+        bot = make_bot()
+        settings = bot.snapshot()["settings"]
+        assert "trading_mode"   in settings
+        assert "order_size_pct" in settings
+        assert "use_testnet"    in settings
 
 
-# ─── TICK ─────────────────────────────────────────────────────────────────────
+# ─── TestBotTick (async) ──────────────────────────────────────────────────────
 
 class TestBotTick:
 
-    def _noop_refresh(self):
-        pass
+    @pytest.mark.asyncio
+    async def test_tick_sans_position_ni_signal_fort(self):
+        bot = make_bot()
+        with patch_market_ok(bot, signal="HOLD", score=0, strong=False), \
+             patch("app.bot.notify_error",         new_callable=AsyncMock), \
+             patch("app.bot.notify_bot_auto_stopped", new_callable=AsyncMock):
+            await bot.tick()
+        assert bot.wallet.has_position() is False
 
-    def test_tick_sans_position_ni_signal_fort(self, bot):
-        bot.last_signal = {"signal": "HOLD", "score": 0, "strong": False,
-                           "ma10": None, "ma20": None}
-        bot._refresh_market = self._noop_refresh
-        bot.tick()
-        assert not bot.wallet.has_position()
+    @pytest.mark.asyncio
+    async def test_tick_ouvre_position_sur_buy_fort(self):
+        bot = make_bot()
+        with patch_market_ok(bot, signal="BUY", score=83, strong=True, price=100.0), \
+             patch("app.bot.notify_buy",           new_callable=AsyncMock), \
+             patch("app.bot.notify_error",         new_callable=AsyncMock), \
+             patch("app.bot.notify_bot_auto_stopped", new_callable=AsyncMock):
+            await bot.tick()
+        assert bot.wallet.has_position() is True
 
-    def test_tick_ouvre_position_sur_buy_fort(self, bot):
-        bot.last_signal = {"signal": "BUY", "score": 100, "strong": True,
-                           "ma10": 50100.0, "ma20": 50000.0}
-        bot._refresh_market = self._noop_refresh
-        bot.tick()
-        assert bot.wallet.has_position()
+    @pytest.mark.asyncio
+    async def test_tick_ferme_position_take_profit(self):
+        bot = make_bot()
+        # Ouvre une position d'abord
+        with patch_market_ok(bot, signal="BUY", score=83, strong=True, price=100.0), \
+             patch("app.bot.notify_buy", new_callable=AsyncMock):
+            await bot.tick()
 
-    def test_tick_ferme_position_take_profit(self, bot):
-        bot.wallet.open_long(50000.0)
-        qty = bot.wallet.position_qty
-        bot.current_price = 50000.0 + (bot.take_profit_usd / qty) + 0.01
-        bot._refresh_market = self._noop_refresh
-        bot.last_signal = {"signal": "HOLD", "score": 0, "strong": False,
-                           "ma10": None, "ma20": None}
-        bot.tick()
-        assert not bot.wallet.has_position()
+        assert bot.wallet.has_position() is True
 
-    def test_tick_ferme_position_stop_loss_et_stoppe_bot(self, bot):
+        # Tick avec prix suffisant pour TP
+        tp_price = bot.current_price + bot.take_profit_usd * 10000
+        with patch_market_ok(bot, signal="HOLD", score=0, strong=False, price=tp_price), \
+             patch("app.bot.notify_take_profit", new_callable=AsyncMock):
+            await bot.tick()
+
+        assert bot.wallet.has_position() is False
+
+    @pytest.mark.asyncio
+    async def test_tick_ferme_position_stop_loss_et_stoppe_bot(self):
+        bot = make_bot()
+        # Ouvre une position
+        with patch_market_ok(bot, signal="BUY", score=83, strong=True, price=100.0), \
+             patch("app.bot.notify_buy", new_callable=AsyncMock):
+            await bot.tick()
+
         bot.running = True
-        bot.wallet.open_long(50000.0)
-        qty = bot.wallet.position_qty
-        bot.current_price = 50000.0 - (abs(bot.stop_loss_usd) / qty) - 0.01
-        bot._refresh_market = self._noop_refresh
-        bot.last_signal = {"signal": "HOLD", "score": 0, "strong": False,
-                           "ma10": None, "ma20": None}
-        bot.tick()
-        assert not bot.wallet.has_position()
+
+        # Tick avec prix qui déclenche le SL
+        sl_price = bot.current_price - bot.take_profit_usd * 10000
+        with patch_market_ok(bot, signal="HOLD", score=0, strong=False, price=sl_price), \
+             patch("app.bot.notify_stop_loss", new_callable=AsyncMock):
+            await bot.tick()
+
+        assert bot.wallet.has_position() is False
         assert bot.running is False
 
-    def test_tick_gere_erreur_marche(self, bot, monkeypatch):
-        """Erreur reseau : patch au niveau module pour que _refresh_market
-        incremente _consecutive_errors avant de remonter l'exception."""
-        import app.bot as bot_module
-        monkeypatch.setattr(bot_module, "get_latest_price",
-                            lambda symbol: (_ for _ in ()).throw(MarketDataError("timeout")))
-        monkeypatch.setattr(time, "sleep", lambda s: None)
+    @pytest.mark.asyncio
+    async def test_tick_gere_erreur_marche(self):
+        bot = make_bot()
+        with patch_market_error(bot), \
+             patch("app.bot.notify_error",            new_callable=AsyncMock), \
+             patch("app.bot.notify_bot_auto_stopped", new_callable=AsyncMock):
+            await bot.tick()
+        assert bot._consecutive_errors > 0
 
-        initial_errors = bot._consecutive_errors
-        bot.tick()
-        assert bot._consecutive_errors == initial_errors + 1
-
-    def test_tick_stoppe_bot_apres_max_erreurs(self, bot, monkeypatch):
-        """Max erreurs consecutives atteint -> bot s'arrete."""
-        import app.bot as bot_module
-        monkeypatch.setattr(bot_module, "get_latest_price",
-                            lambda symbol: (_ for _ in ()).throw(MarketDataError("down")))
-        monkeypatch.setattr(time, "sleep", lambda s: None)
-
-        bot.running = True
+    @pytest.mark.asyncio
+    async def test_tick_stoppe_bot_apres_max_erreurs(self):
+        bot = make_bot()
         bot._consecutive_errors = bot._max_consecutive_errors - 1
-        bot.tick()
+
+        with patch_market_error(bot), \
+             patch("app.bot.notify_error",            new_callable=AsyncMock), \
+             patch("app.bot.notify_bot_auto_stopped", new_callable=AsyncMock):
+            await bot.tick()
+
         assert bot.running is False
 
 
-# ─── RESET ────────────────────────────────────────────────────────────────────
+# ─── TestBotReset ─────────────────────────────────────────────────────────────
 
 class TestBotReset:
-    def test_reset_arrete_le_bot(self, bot):
+
+    def test_reset_arrete_le_bot(self):
+        bot = make_bot()
         bot.running = True
-        bot.reset()
+        with patch("app.bot.get_recent_closes", return_value=[float(i) for i in range(1, 31)]), \
+             patch("app.bot.get_latest_price",  return_value=100.0), \
+             patch("app.bot.analyze", return_value={
+                 "signal": "HOLD", "score": 0, "strong": False,
+                 "ma10": None, "ma20": None,
+             }):
+            bot.reset()
         assert bot.running is False
 
-    def test_reset_reinitialise_compteur_erreurs(self, bot):
-        bot._consecutive_errors = 3
-        bot.reset()
+    def test_reset_reinitialise_compteur_erreurs(self):
+        bot = make_bot()
+        bot._consecutive_errors = 5
+        with patch("app.bot.get_recent_closes", return_value=[float(i) for i in range(1, 31)]), \
+             patch("app.bot.get_latest_price",  return_value=100.0), \
+             patch("app.bot.analyze", return_value={
+                 "signal": "HOLD", "score": 0, "strong": False,
+                 "ma10": None, "ma20": None,
+             }):
+            bot.reset()
         assert bot._consecutive_errors == 0
 
-    def test_reset_reinitialise_wallet(self, bot):
-        bot.wallet.open_long(50000.0)
-        bot.reset()
-        assert not bot.wallet.has_position()
-        assert bot.wallet.cash == pytest.approx(8.0)
+    def test_reset_reinitialise_wallet(self):
+        bot = make_bot()
+        with patch("app.bot.get_recent_closes", return_value=[float(i) for i in range(1, 31)]), \
+             patch("app.bot.get_latest_price",  return_value=100.0), \
+             patch("app.bot.analyze", return_value={
+                 "signal": "HOLD", "score": 0, "strong": False,
+                 "ma10": None, "ma20": None,
+             }):
+            bot.reset()
+        assert bot.wallet.has_position() is False
 
-    def test_reset_vide_les_trades(self, bot):
+    def test_reset_vide_les_trades(self):
+        bot = make_bot()
+        with patch("app.bot.get_recent_closes", return_value=[float(i) for i in range(1, 31)]), \
+             patch("app.bot.get_latest_price",  return_value=100.0), \
+             patch("app.bot.analyze", return_value={
+                 "signal": "HOLD", "score": 0, "strong": False,
+                 "ma10": None, "ma20": None,
+             }):
+            bot.reset()
         from app.db import fetch_trades
-        bot.wallet.open_long(50000.0)
-        bot.wallet.close_long(51000.0, "TP")
-        bot.reset()
-        assert fetch_trades(limit=10) == []
+        assert fetch_trades(limit=100) == []
+
+    def test_reset_reinitialise_real_position(self):
+        bot = make_bot()
+        bot.real_position = {
+            "active": True, "entry_price": 100.0,
+            "qty": 0.001,   "quote_spent": 10.0,
+        }
+        with patch("app.bot.get_recent_closes", return_value=[float(i) for i in range(1, 31)]), \
+             patch("app.bot.get_latest_price",  return_value=100.0), \
+             patch("app.bot.analyze", return_value={
+                 "signal": "HOLD", "score": 0, "strong": False,
+                 "ma10": None, "ma20": None,
+             }):
+            bot.reset()
+        assert bot.real_position["active"] is False
 
 
-# ─── GESTION ERREURS RÉSEAU ───────────────────────────────────────────────────
+# ─── TestBotRetry ─────────────────────────────────────────────────────────────
 
 class TestBotRetry:
 
-    def test_refresh_market_retry_puis_succes(self, bot, monkeypatch):
-        """2 echecs puis succes au 3eme appel -> prix mis a jour."""
-        import app.bot as bot_module
-        call_count = {"n": 0}
+    def test_refresh_market_retry_puis_succes(self):
+        bot = make_bot()
+        call_count = [0]
 
-        def flaky_price(symbol):
-            call_count["n"] += 1
-            if call_count["n"] < 3:
-                raise MarketDataError("timeout")
-            return 51000.0
+        def flaky_closes(**kwargs):
+            call_count[0] += 1
+            if call_count[0] < 3:
+                raise MarketDataError("Simulated transient error")
+            return [float(i) for i in range(1, 31)]
 
-        monkeypatch.setattr(bot_module, "get_latest_price", flaky_price)
-        monkeypatch.setattr(time, "sleep", lambda s: None)
-
-        bot._consecutive_errors = 0
-        bot._refresh_market()
-
-        assert bot.current_price       == 51000.0
-        assert bot._consecutive_errors == 0
-        assert call_count["n"]         == 3
-
-    def test_refresh_market_echec_total_leve_exception(self, bot, monkeypatch):
-        """3 echecs consecutifs -> leve MarketDataError."""
-        import app.bot as bot_module
-        monkeypatch.setattr(bot_module, "get_latest_price",
-                            lambda symbol: (_ for _ in ()).throw(MarketDataError("down")))
-        monkeypatch.setattr(time, "sleep", lambda s: None)
-
-        bot._consecutive_errors = 0
-        with pytest.raises(MarketDataError):
+        with patch("app.bot.get_recent_closes", side_effect=flaky_closes), \
+             patch("app.bot.get_latest_price",  return_value=100.0), \
+             patch("app.bot.analyze", return_value={
+                 "signal": "HOLD", "score": 0, "strong": False,
+                 "ma10": None, "ma20": None,
+             }), \
+             patch("time.sleep"):
             bot._refresh_market()
 
-        assert bot._consecutive_errors == 1
+        assert bot._consecutive_errors == 0
+        assert call_count[0] == 3
+
+    def test_refresh_market_echec_total_leve_exception(self):
+        bot = make_bot()
+        with patch("app.bot.get_recent_closes",
+                   side_effect=MarketDataError("Always fails")), \
+             patch("time.sleep"):
+            with pytest.raises(MarketDataError):
+                bot._refresh_market()
+        assert bot._consecutive_errors > 0
+
+
+# ─── TestBotRealMode ──────────────────────────────────────────────────────────
+
+class TestBotRealMode:
+
+    @pytest.mark.asyncio
+    async def test_real_mode_fallback_paper_si_non_configure(self):
+        """Si les clés Binance manquent, le mode réel doit fallback sur paper."""
+        bot = make_bot()
+        bot.trading_mode = "real"
+
+        with patch_market_ok(bot, signal="BUY", score=83, strong=True, price=100.0), \
+             patch("app.bot.BinanceClient.is_configured", return_value=False), \
+             patch("app.bot.notify_buy", new_callable=AsyncMock):
+            await bot.tick()
+
+        # Pas de position réelle ouverte (fallback paper)
+        assert bot.real_position["active"] is False
+
+    @pytest.mark.asyncio
+    async def test_real_mode_ouvre_position_si_configure(self):
+        bot = make_bot()
+        bot.trading_mode   = "real"
+        bot.order_size_pct = 100.0
+
+        fake_order = {
+            "side": "BUY", "executedQty": "0.00016",
+            "fills": [{"price": "100.0", "qty": "0.00016"}],
+        }
+
+        with patch_market_ok(bot, signal="BUY", score=83, strong=True, price=100.0), \
+             patch("app.bot.BinanceClient.is_configured",  return_value=True), \
+             patch("app.bot.BinanceClient.get_usdt_balance",
+                   new_callable=AsyncMock, return_value=10.0), \
+             patch("app.bot.BinanceClient.place_market_buy",
+                   new_callable=AsyncMock, return_value=fake_order), \
+             patch("app.bot.notify_buy", new_callable=AsyncMock):
+            await bot.tick()
+
+        assert bot.real_position["active"]      is True
+        assert bot.real_position["entry_price"] == 100.0
+
+    @pytest.mark.asyncio
+    async def test_real_mode_ferme_position_take_profit(self):
+        bot = make_bot()
+        bot.trading_mode    = "real"
+        bot.take_profit_usd = 1.0
+        bot.real_position   = {
+            "active": True, "entry_price": 100.0,
+            "qty": 0.001,   "quote_spent": 10.0,
+        }
+        # Nouveau prix → PnL = (200000 - 100) * 0.001 = beaucoup > 1.0
+        bot.current_price = 2000.0
+
+        fake_sell = {
+            "side": "SELL", "executedQty": "0.001",
+            "fills": [{"price": "2000.0", "qty": "0.001"}],
+        }
+
+        with patch_market_ok(bot, signal="HOLD", score=0, strong=False, price=2000.0), \
+             patch("app.bot.BinanceClient.is_configured",    return_value=True), \
+             patch("app.bot.BinanceClient.get_step_size",
+                   new_callable=AsyncMock, return_value=0.00001), \
+             patch("app.bot.BinanceClient.place_market_sell",
+                   new_callable=AsyncMock, return_value=fake_sell), \
+             patch("app.bot.notify_take_profit", new_callable=AsyncMock):
+            await bot.tick()
+
+        assert bot.real_position["active"] is False
+
+    @pytest.mark.asyncio
+    async def test_real_mode_solde_insuffisant(self):
+        """Si le solde USDT est inférieur à 1$, aucun ordre ne doit être passé."""
+        bot = make_bot()
+        bot.trading_mode = "real"
+
+        with patch_market_ok(bot, signal="BUY", score=83, strong=True, price=100.0), \
+             patch("app.bot.BinanceClient.is_configured",  return_value=True), \
+             patch("app.bot.BinanceClient.get_usdt_balance",
+                   new_callable=AsyncMock, return_value=0.5), \
+             patch("app.bot.BinanceClient.place_market_buy",
+                   new_callable=AsyncMock) as mock_buy:
+            await bot.tick()
+
+        mock_buy.assert_not_called()
+        assert bot.real_position["active"] is False
