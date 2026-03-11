@@ -12,6 +12,10 @@ from .db import fetch_logs, fetch_trades
 from .health import build_health_report                          # ← AJOUT
 from .settings import get_settings, reset_settings, update_settings
 
+from datetime import datetime
+from pydantic import BaseModel
+from .backtest import fetch_klines, run_backtest
+
 # ─── CONFIG ─────────────────────────────────────────────────────────────────
 API_KEY_VALUE = os.environ.get("API_KEY", "")
 API_KEY_NAME  = "X-API-Key"
@@ -55,6 +59,14 @@ class SettingsUpdatePayload(BaseModel):
     stop_loss_usd:    Optional[float] = None
     initial_balance:  Optional[float] = None
 
+class BacktestRequest(BaseModel):
+    symbol:          str   = "BTCUSDT"
+    interval:        str   = "1m"
+    start:           str   = ""   # ISO datetime string ex: "2026-03-01T00:00"
+    end:             str   = ""   # ISO datetime string ex: "2026-03-08T00:00"
+    initial_balance: float = 8.0
+    take_profit_usd: float = 1.0
+    stop_loss_usd:   float = -1.0
 # ─── ROUTES PUBLIQUES ───────────────────────────────────────────────────────
 @app.get("/")
 def root():
@@ -134,3 +146,28 @@ def api_reset_settings(auth: bool = Security(verify_api_key)):
         "settings": settings,
         "status": bot.snapshot(),
     }
+
+@app.post("/backtest")
+async def backtest(req: BacktestRequest, _: str = Depends(verify_api_key)):
+    """Lance un backtest sur les données historiques Binance."""
+    from datetime import datetime, timedelta
+
+    # Dates par défaut : 7 derniers jours
+    if req.end:
+        end_dt = datetime.fromisoformat(req.end)
+    else:
+        end_dt = datetime.utcnow()
+
+    if req.start:
+        start_dt = datetime.fromisoformat(req.start)
+    else:
+        start_dt = end_dt - timedelta(days=7)
+
+    klines = await fetch_klines(req.symbol, req.interval, start_dt, end_dt)
+    result = run_backtest(
+        klines,
+        initial_balance=req.initial_balance,
+        take_profit_usd=req.take_profit_usd,
+        stop_loss_usd=req.stop_loss_usd,
+    )
+    return result
