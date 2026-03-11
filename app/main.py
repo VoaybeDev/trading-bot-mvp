@@ -9,23 +9,16 @@ from pydantic import BaseModel
 
 from .bot import TradingBot
 from .db import fetch_logs, fetch_trades
+from .health import build_health_report                          # ← AJOUT
 from .settings import get_settings, reset_settings, update_settings
 
 # ─── CONFIG ─────────────────────────────────────────────────────────────────
-# Cle API lue depuis la variable d'environnement API_KEY
-# Si API_KEY n'est pas definie, le serveur demarre mais affiche un avertissement
 API_KEY_VALUE = os.environ.get("API_KEY", "")
 API_KEY_NAME  = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 def verify_api_key(key: str = Security(api_key_header)) -> bool:
-    """
-    Valide la cle API passee dans le header X-API-Key.
-    Si API_KEY n'est pas configuree dans .env, la protection est desactivee
-    et un warning est affiche au demarrage.
-    """
     if not API_KEY_VALUE:
-        # Pas de cle configuree -> acces libre (mode dev)
         return True
     if key != API_KEY_VALUE:
         raise HTTPException(status_code=403, detail="Cle API invalide ou manquante")
@@ -71,6 +64,10 @@ def root():
 @app.get("/status")
 def status(auth: bool = Security(verify_api_key)):
     return bot.snapshot()
+
+@app.get("/health")                                              # ← AJOUT
+def api_health(auth: bool = Security(verify_api_key)):          # ← AJOUT
+    return build_health_report(bot)                             # ← AJOUT
 
 @app.post("/start")
 async def start(auth: bool = Security(verify_api_key)):
