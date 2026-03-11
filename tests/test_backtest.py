@@ -208,7 +208,6 @@ class TestRunBacktest:
         """On ne peut pas ouvrir 2 positions simultanées."""
         klines = make_klines_trending_up(200)
         result = run_backtest(klines)
-        # Vérifie que chaque trade est bien fermé avant le suivant
         for i in range(len(result["trades"]) - 1):
             t1 = result["trades"][i]
             t2 = result["trades"][i + 1]
@@ -258,7 +257,7 @@ class TestFetchKlines:
     async def test_retourne_liste_de_klines(self):
         mock_response = AsyncMock()
         mock_response.json = MagicMock(return_value=BINANCE_KLINES_RESPONSE)
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -277,7 +276,7 @@ class TestFetchKlines:
     async def test_klines_ont_les_bons_champs(self):
         mock_response = AsyncMock()
         mock_response.json = MagicMock(return_value=BINANCE_KLINES_RESPONSE)
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -303,7 +302,7 @@ class TestFetchKlines:
     async def test_close_est_float(self):
         mock_response = AsyncMock()
         mock_response.json = MagicMock(return_value=BINANCE_KLINES_RESPONSE)
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)
@@ -324,7 +323,7 @@ class TestFetchKlines:
     async def test_retourne_liste_vide_si_api_vide(self):
         mock_response = AsyncMock()
         mock_response.json = MagicMock(return_value=[])
-        mock_response.raise_for_status = AsyncMock()
+        mock_response.raise_for_status = MagicMock()
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_response)

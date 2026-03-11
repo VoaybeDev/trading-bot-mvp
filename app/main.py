@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.params import Depends
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
@@ -148,7 +149,7 @@ def api_reset_settings(auth: bool = Security(verify_api_key)):
     }
 
 @app.post("/backtest")
-async def backtest(req: BacktestRequest, _: str = Depends(verify_api_key)):
+async def backtest(req: BacktestRequest, _: bool = Security(verify_api_key)):
     """Lance un backtest sur les données historiques Binance."""
     from datetime import datetime, timedelta
 
