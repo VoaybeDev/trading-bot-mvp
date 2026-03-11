@@ -137,7 +137,7 @@ describe("Boutons d'action", () => {
     expect(screen.getByRole("button", { name: /stop/i    })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /tick/i    })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reset/i   })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /refresh/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /refresh/i })[0]).toBeInTheDocument();
   });
 
   it("appelle startBot au clic sur Start", async () => {
@@ -168,7 +168,7 @@ describe("Boutons d'action", () => {
     await renderApp();
     const before = api.getStatus.mock.calls.length;
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+      fireEvent.click(screen.getAllByRole("button", { name: /refresh/i })[0]);
     });
     expect(api.getStatus.mock.calls.length).toBeGreaterThan(before);
   });

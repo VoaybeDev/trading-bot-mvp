@@ -46,6 +46,7 @@ export async function stopBot()          { return request("/stop",            { 
 export async function tickBot()          { return request("/tick",            { method: "POST" }); }
 export async function resetBot()         { return request("/reset",           { method: "POST" }); }
 export async function resetSettings()    { return request("/settings/reset",  { method: "POST" }); }
+export async function getHealth() { return request("/health"); }
 export async function updateSettings(payload) {
   return request("/settings/update", {
     method: "POST",

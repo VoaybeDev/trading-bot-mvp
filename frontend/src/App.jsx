@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { getStatus, startBot, stopBot, tickBot, resetBot, updateSettings } from "./api";
+import HealthDashboard from "./HealthDashboard";
 
 const defaultForm = {
   symbol: "BTCUSDT",
@@ -376,7 +377,8 @@ function App() {
         </div>
       ) : (
         <div>
-
+          {/* ── HEALTH DASHBOARD ── */}
+          <HealthDashboard />
           {/* ── CHARTS ── */}
           <section className="grid two">
             <div className="card">

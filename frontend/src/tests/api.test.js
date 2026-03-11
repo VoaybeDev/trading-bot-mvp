@@ -12,6 +12,7 @@ import {
   resetBot,
   resetSettings,
   updateSettings,
+  getHealth,
 } from "../api.js";
 
 // ─── MOCK global fetch (vi.stubGlobal évite le warning TypeScript) ────────────
@@ -257,5 +258,24 @@ describe("Messages d'erreur", () => {
       json: async () => ({ detail: "Valeur invalide" }),
     });
     await expect(updateSettings({})).rejects.toThrow("Valeur invalide");
+  });
+});
+describe("getHealth", () => {
+  it("appelle GET /health", async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({ status: "ok" }));
+    await getHealth();
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("/health"),
+      expect.anything()
+    );
+  });
+
+  it("retourne le rapport de santé", async () => {
+    const health = { status: "ok", version: "1.0.0",
+      components: { database: { status: "ok" } } };
+    mockFetch.mockResolvedValueOnce(mockResponse(health));
+    const result = await getHealth();
+    expect(result.status).toBe("ok");
+    expect(result.components.database.status).toBe("ok");
   });
 });
