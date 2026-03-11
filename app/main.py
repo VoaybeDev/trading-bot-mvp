@@ -1,10 +1,15 @@
-import asyncio
+# ─── CHARGER LE .env EN PREMIER — avant tous les autres imports ─────────────
 import os
+from dotenv import load_dotenv
+load_dotenv()  # ← ICI, tout en haut, avant les imports du projet
+
+# ─── IMPORTS ────────────────────────────────────────────────────────────────
+import asyncio
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.params import Depends
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
@@ -13,8 +18,6 @@ from .db import fetch_logs, fetch_trades
 from .health import build_health_report
 from .settings import get_settings, reset_settings, update_settings
 from .notifier import notify_bot_started, notify_bot_stopped
-
-from datetime import datetime, timedelta
 from .backtest import fetch_klines, run_backtest
 
 # ─── CONFIG ─────────────────────────────────────────────────────────────────

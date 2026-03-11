@@ -1,6 +1,6 @@
 """
 notifier.py — Notifications Telegram pour NexTrade.
-Placez ce fichier dans : trading-bot-mvp/app/notifier.py
+Fichier : trading-bot-mvp/app/notifier.py
 
 Variables d'environnement requises :
     TELEGRAM_TOKEN   — Token du bot Telegram (via @BotFather)
@@ -18,16 +18,14 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN",   "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-
 TELEGRAM_API = "https://api.telegram.org"
 
 
 # ─── CORE ─────────────────────────────────────────────────────────────────────
 
 def _is_configured() -> bool:
-    return bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
+    # Lecture dynamique à chaque appel — pas au chargement du module
+    return bool(os.getenv("TELEGRAM_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
 
 
 async def send_message(text: str, token: Optional[str] = None, chat_id: Optional[str] = None) -> bool:
@@ -36,8 +34,9 @@ async def send_message(text: str, token: Optional[str] = None, chat_id: Optional
     Retourne True si succès, False sinon.
     Les erreurs sont loggées mais ne lèvent jamais d'exception.
     """
-    t = token   or TELEGRAM_TOKEN
-    c = chat_id or TELEGRAM_CHAT_ID
+    # Lecture dynamique à chaque appel pour prendre en compte le .env chargé après import
+    t = token   or os.getenv("TELEGRAM_TOKEN",   "")
+    c = chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
 
     if not t or not c:
         logger.debug("Telegram non configuré — notification ignorée.")
