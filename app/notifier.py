@@ -20,12 +20,21 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
 
+# Variables de module exposées pour permettre le patching dans les tests.
+# Initialisées à "" — la résolution réelle se fait à l'appel via os.getenv()
+# en fallback, ce qui garantit le bon fonctionnement en production même si
+# le .env est chargé après l'import du module.
+TELEGRAM_TOKEN   = ""
+TELEGRAM_CHAT_ID = ""
+
 
 # ─── CORE ─────────────────────────────────────────────────────────────────────
 
 def _is_configured() -> bool:
-    # Lecture dynamique à chaque appel — pas au chargement du module
-    return bool(os.getenv("TELEGRAM_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"))
+    # Priorité : variable de module (patchable en test) puis variable d'env (prod)
+    token   = TELEGRAM_TOKEN   or os.getenv("TELEGRAM_TOKEN",   "")
+    chat_id = TELEGRAM_CHAT_ID or os.getenv("TELEGRAM_CHAT_ID", "")
+    return bool(token and chat_id)
 
 
 async def send_message(text: str, token: Optional[str] = None, chat_id: Optional[str] = None) -> bool:
@@ -34,9 +43,9 @@ async def send_message(text: str, token: Optional[str] = None, chat_id: Optional
     Retourne True si succès, False sinon.
     Les erreurs sont loggées mais ne lèvent jamais d'exception.
     """
-    # Lecture dynamique à chaque appel pour prendre en compte le .env chargé après import
-    t = token   or os.getenv("TELEGRAM_TOKEN",   "")
-    c = chat_id or os.getenv("TELEGRAM_CHAT_ID", "")
+    # Priorité : argument explicite > variable de module (test) > variable d'env (prod)
+    t = token   or TELEGRAM_TOKEN   or os.getenv("TELEGRAM_TOKEN",   "")
+    c = chat_id or TELEGRAM_CHAT_ID or os.getenv("TELEGRAM_CHAT_ID", "")
 
     if not t or not c:
         logger.debug("Telegram non configuré — notification ignorée.")
@@ -90,7 +99,7 @@ async def notify_buy(symbol: str, price: float, qty: float, score: int) -> bool:
 
 
 async def notify_sell(symbol: str, price: float, pnl: float, reason: str) -> bool:
-    emoji = "✅" if pnl >= 0 else "❌"
+    emoji   = "✅" if pnl >= 0 else "❌"
     pnl_str = f"+{pnl:.4f}" if pnl >= 0 else f"{pnl:.4f}"
     text = (
         f"{emoji} <b>NexTrade — Signal SELL ({reason})</b>\n"

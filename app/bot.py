@@ -16,8 +16,8 @@ from .notifier import (
     notify_bot_auto_stopped,
 )
 
-MAX_RETRY   = 3
-RETRY_DELAY = 2.0
+MAX_RETRY     = 3
+RETRY_DELAY   = 2.0
 TICK_INTERVAL = 5.0
 
 
@@ -32,7 +32,7 @@ class TradingBot:
         self.prices  = deque(maxlen=100)
         self.current_price = 0.0
 
-        self._consecutive_errors    = 0
+        self._consecutive_errors     = 0
         self._max_consecutive_errors = 5
 
         self.last_signal = {
@@ -62,9 +62,11 @@ class TradingBot:
         self.take_profit_usd = s["take_profit_usd"]
         self.stop_loss_usd   = s["stop_loss_usd"]
         self.initial_balance = s["initial_balance"]
-        self.trading_mode    = s["trading_mode"]   # "paper" | "real"
-        self.order_size_pct  = s["order_size_pct"] # 1–100
-        self.use_testnet     = s["use_testnet"]    # bool
+        # Valeur par défaut "paper" — mode sûr si la clé est absente ou invalide
+        trading_mode         = s.get("trading_mode", "paper")
+        self.trading_mode    = trading_mode if trading_mode in ("paper", "real") else "paper"
+        self.order_size_pct  = s.get("order_size_pct", 100)   # 1–100
+        self.use_testnet     = s.get("use_testnet", True)      # bool
 
     def _log(self, message: str):
         insert_log(message)
@@ -226,9 +228,9 @@ class TradingBot:
 
         # ── Position ouverte ─────────────────────────────────────────────────
         if self.real_position["active"]:
-            entry  = self.real_position["entry_price"]
-            qty    = self.real_position["qty"]
-            pnl    = (self.current_price - entry) * qty
+            entry = self.real_position["entry_price"]
+            qty   = self.real_position["qty"]
+            pnl   = (self.current_price - entry) * qty
 
             self._log(
                 f"[REAL] Position ouverte | entry={entry:.4f} | "
@@ -247,7 +249,7 @@ class TradingBot:
 
             if should_close:
                 try:
-                    order = await exchange.place_market_sell(self.symbol, qty)
+                    order     = await exchange.place_market_sell(self.symbol, qty)
                     avg_price = BinanceClient.parse_avg_price(order) or self.current_price
                     real_pnl  = (avg_price - entry) * qty
 
@@ -293,7 +295,7 @@ class TradingBot:
                     )
                     return
 
-                order     = await exchange.place_market_buy(self.symbol, quote_amount)
+                order      = await exchange.place_market_buy(self.symbol, quote_amount)
                 filled_qty = BinanceClient.parse_filled_qty(order)
                 avg_price  = BinanceClient.parse_avg_price(order) or self.current_price
 
@@ -381,11 +383,11 @@ class TradingBot:
                 "order_size_pct":  self.order_size_pct,
                 "use_testnet":     self.use_testnet,
             },
-            "last_signal":    self.last_signal,
-            "wallet":         self.wallet.status(self.current_price),
-            "real_position":  self.real_position,
-            "trades":         fetch_trades(limit=20),
-            "logs":           fetch_logs(limit=20),
+            "last_signal":   self.last_signal,
+            "wallet":        self.wallet.status(self.current_price),
+            "real_position": self.real_position,
+            "trades":        fetch_trades(limit=20),
+            "logs":          fetch_logs(limit=20),
             "health": {
                 "consecutive_errors":     self._consecutive_errors,
                 "max_consecutive_errors": self._max_consecutive_errors,

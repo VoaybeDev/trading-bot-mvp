@@ -1,27 +1,34 @@
-# ── BACKEND Dockerfile ──────────────────────────────────────────────────────
-# Placer ce fichier a la racine du projet : trading-bot-mvp/Dockerfile
+# ─── Dockerfile — NexTrade backend pour Hugging Face Spaces ────────────────
+# HF Spaces impose :
+#   - Port 7860
+#   - Utilisateur non-root (uid 1000)
+#   - Stockage persistant monté sur /data
+
 FROM python:3.12-slim
 
-# Variables d'environnement Python
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+LABEL maintainer="VoaybeDev"
 
 WORKDIR /app
 
-# Dependances systeme minimales
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Installation des dependances Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copie du code source
-COPY app/ ./app/
+COPY . .
 
-# Exposition du port FastAPI
-EXPOSE 8000
+# /data = volume persistant HF Spaces pour SQLite
+RUN mkdir -p /data
 
-# Lancement avec uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Utilisateur non-root requis par HF Spaces
+RUN useradd -m -u 1000 appuser \
+    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser /data
+
+USER appuser
+
+EXPOSE 7860
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]

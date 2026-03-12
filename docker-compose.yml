@@ -1,0 +1,24 @@
+# docker-compose.yml — Développement local NexTrade
+# Usage : docker compose up --build
+
+services:
+  backend:
+    build: .
+    ports:
+      - "7860:7860"
+    volumes:
+      # Simule le volume persistant /data de Hugging Face Spaces
+      - trading_data:/data
+      # Hot-reload du code en dev (optionnel, retire en prod)
+      - ./app:/app/app
+    environment:
+      # Copie ton .env ici ou utilise un fichier env_file
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - API_KEY=${API_KEY:-dev_key}
+      - TRADING_MODE=${TRADING_MODE:-paper}
+      - USE_TESTNET=${USE_TESTNET:-true}
+    restart: unless-stopped
+
+volumes:
+  trading_data:
