@@ -2,12 +2,17 @@
  * frontend/api/notify.js
  * Relay Telegram — reçoit les notifications de HF Spaces
  * et les transmet à l'API Telegram (HF bloque les appels directs).
- *
- * Variables d'environnement Vercel requises :
- *   TELEGRAM_TOKEN    — Token du bot Telegram
- *   TELEGRAM_CHAT_ID  — ID du chat destinataire
- *   NOTIFY_SECRET     — Clé partagée avec HF Spaces pour sécuriser le relay
  */
+
+// Indique à Vercel de parser automatiquement le body JSON
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '1mb',
+    },
+  },
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -18,7 +23,13 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
-  const { text } = req.body;
+  // Support body parsé automatiquement ou string brut
+  let body = req.body;
+  if (typeof body === "string") {
+    try { body = JSON.parse(body); } catch { body = {}; }
+  }
+
+  const text = body?.text;
   if (!text) {
     return res.status(400).json({ error: "Missing 'text' field" });
   }
