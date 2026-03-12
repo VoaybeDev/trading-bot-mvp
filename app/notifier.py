@@ -2,11 +2,15 @@
 notifier.py — Notifications Telegram pour NexTrade.
 Fichier : trading-bot-mvp/app/notifier.py
 
-Variables d'environnement requises :
-    TELEGRAM_TOKEN   — Token du bot Telegram (via @BotFather)
-    TELEGRAM_CHAT_ID — ID du chat/channel destinataire
+Deux modes de fonctionnement :
+  1. RELAY (recommandé sur HF Spaces) :
+     Définir NOTIFY_RELAY_URL + NOTIFY_SECRET dans les secrets HF.
+     Le bot appelle le relay Vercel qui transmet à Telegram.
+     → Contourne le blocage DNS de api.telegram.org sur HF Spaces.
 
-Si les variables sont absentes, les notifications sont silencieusement ignorées.
+  2. DIRECT (dev local) :
+     Définir TELEGRAM_TOKEN + TELEGRAM_CHAT_ID dans .env local.
+     Le bot appelle directement l'API Telegram.
 """
 from __future__ import annotations
 
@@ -20,40 +24,47 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
 
-# Variables de module initialisées via os.getenv() à l'import.
-# → En production (HF Spaces) : lit les secrets au démarrage du conteneur.
-# → En tests : patchables via patch("app.notifier.TELEGRAM_TOKEN", "...")
-# Les fonctions lisent UNIQUEMENT ces variables (pas de fallback os.getenv)
-# pour que patch("...", "") retourne bien False dans les tests.
+# ── Variables de module (patchables dans les tests) ──────────────────────────
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN",   "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# ── Config relay Vercel ───────────────────────────────────────────────────────
+# NOTIFY_RELAY_URL  = URL du relay Vercel
+# NOTIFY_SECRET     = clé partagée entre HF et Vercel (header X-Notify-Secret)
+NOTIFY_RELAY_URL = os.getenv("NOTIFY_RELAY_URL", "")
+NOTIFY_SECRET    = os.getenv("NOTIFY_SECRET",    "")
 
 
 # ─── CORE ─────────────────────────────────────────────────────────────────────
 
 def _is_configured() -> bool:
-    return bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
+    relay_ok  = bool(NOTIFY_RELAY_URL)
+    direct_ok = bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
+    return relay_ok or direct_ok
 
 
-async def send_message(text: str, token: Optional[str] = None, chat_id: Optional[str] = None) -> bool:
-    """
-    Envoie un message Telegram.
-    Retourne True si succès, False sinon.
-    Les erreurs sont loggées mais ne lèvent jamais d'exception.
-    """
-    t = token   or TELEGRAM_TOKEN
-    c = chat_id or TELEGRAM_CHAT_ID
+async def _send_via_relay(text: str) -> bool:
+    headers = {"Content-Type": "application/json"}
+    if NOTIFY_SECRET:
+        headers["X-Notify-Secret"] = NOTIFY_SECRET
 
-    if not t or not c:
-        logger.debug("Telegram non configuré — notification ignorée.")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                NOTIFY_RELAY_URL,
+                json={"text": text},
+                headers=headers,
+            )
+            resp.raise_for_status()
+            return True
+    except Exception as exc:
+        logger.warning("Echec relay Vercel : %s", exc)
         return False
 
-    url = f"{TELEGRAM_API}/bot{t}/sendMessage"
-    payload = {
-        "chat_id":    c,
-        "text":       text,
-        "parse_mode": "HTML",
-    }
+
+async def _send_direct(text: str, token: str, chat_id: str) -> bool:
+    url     = f"{TELEGRAM_API}/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -61,11 +72,31 @@ async def send_message(text: str, token: Optional[str] = None, chat_id: Optional
             resp.raise_for_status()
             return True
     except Exception as exc:
-        logger.warning("Échec notification Telegram : %s", exc)
+        logger.warning("Echec notification Telegram directe : %s", exc)
         return False
 
 
-# ─── ÉVÉNEMENTS ───────────────────────────────────────────────────────────────
+async def send_message(
+    text: str,
+    token: Optional[str] = None,
+    chat_id: Optional[str] = None,
+) -> bool:
+    # Mode relay (HF Spaces)
+    if NOTIFY_RELAY_URL:
+        return await _send_via_relay(text)
+
+    # Mode direct (dev local)
+    t = token   or TELEGRAM_TOKEN
+    c = chat_id or TELEGRAM_CHAT_ID
+
+    if not t or not c:
+        logger.debug("Telegram non configure — notification ignoree.")
+        return False
+
+    return await _send_direct(text, t, c)
+
+
+# ─── EVENEMENTS ───────────────────────────────────────────────────────────────
 
 async def notify_bot_started(symbol: str, interval: str) -> bool:
     text = (
