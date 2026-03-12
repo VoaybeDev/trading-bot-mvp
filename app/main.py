@@ -35,12 +35,33 @@ def verify_api_key(key: str = Security(api_key_header)) -> bool:
     return True
 
 
+# ─── CORS ───────────────────────────────────────────────────────────────────
+# Origines autorisées — dev local + Vercel (prod + previews)
+# FRONTEND_URL peut être surchargé via variable d'environnement sur HF Spaces
+_FRONTEND_URL = os.environ.get("FRONTEND_URL", "")
+
+ALLOWED_ORIGINS = [
+    # Dev local
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    # Vercel — remplace par ton URL définitive une fois déployé
+    "https://trading-bot-mvp.vercel.app",
+    # Accepte toutes les previews Vercel (branches, PRs)
+    "https://*.vercel.app",
+]
+
+# Ajout dynamique si FRONTEND_URL est défini dans les secrets HF
+if _FRONTEND_URL:
+    ALLOWED_ORIGINS.append(_FRONTEND_URL)
+
+
 # ─── APP ────────────────────────────────────────────────────────────────────
 app = FastAPI(title="NexTrade — Trading Bot MVP")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",  # couvre toutes les previews
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,9 +85,9 @@ class SettingsUpdatePayload(BaseModel):
     take_profit_usd:  Optional[float] = None
     stop_loss_usd:    Optional[float] = None
     initial_balance:  Optional[float] = None
-    trading_mode:     Optional[str]   = None   # "paper" | "real"
-    order_size_pct:   Optional[float] = None   # 1–100
-    use_testnet:      Optional[bool]  = None   # True | False
+    trading_mode:     Optional[str]   = None
+    order_size_pct:   Optional[float] = None
+    use_testnet:      Optional[bool]  = None
 
 
 class BacktestRequest(BaseModel):
@@ -176,10 +197,6 @@ def api_reset_settings(auth: bool = Security(verify_api_key)):
 # ─── BALANCE BINANCE ────────────────────────────────────────────────────────
 @app.get("/balance")
 async def get_balance(auth: bool = Security(verify_api_key)):
-    """
-    Retourne le solde USDT et l'asset de base sur Binance (testnet ou réel).
-    Disponible uniquement si les clés Binance sont configurées.
-    """
     settings = get_settings()
     exchange = BinanceClient(use_testnet=settings["use_testnet"])
 
@@ -193,16 +210,16 @@ async def get_balance(auth: bool = Security(verify_api_key)):
 
     try:
         symbol     = settings["symbol"]
-        base_asset = symbol.replace("USDT", "")  # "BTCUSDT" → "BTC"
+        base_asset = symbol.replace("USDT", "")
 
         usdt_balance  = await exchange.get_usdt_balance()
         asset_balance = await exchange.get_asset_balance(base_asset)
 
         return {
-            "configured":   True,
-            "use_testnet":  settings["use_testnet"],
-            "usdt":         usdt_balance,
-            "base_asset":   base_asset,
+            "configured":    True,
+            "use_testnet":   settings["use_testnet"],
+            "usdt":          usdt_balance,
+            "base_asset":    base_asset,
             "asset_balance": asset_balance,
         }
     except Exception as exc:
@@ -212,7 +229,6 @@ async def get_balance(auth: bool = Security(verify_api_key)):
 # ─── BACKTEST ───────────────────────────────────────────────────────────────
 @app.post("/backtest")
 async def backtest(req: BacktestRequest, _: bool = Security(verify_api_key)):
-    """Lance un backtest sur les données historiques Binance."""
     end_dt   = datetime.fromisoformat(req.end)   if req.end   else datetime.utcnow()
     start_dt = datetime.fromisoformat(req.start) if req.start else end_dt - timedelta(days=7)
 
