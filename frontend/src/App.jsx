@@ -241,7 +241,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // FIX 3 : loadStatus dans le tableau de dependances de useEffect
   useEffect(function() {
@@ -338,8 +338,8 @@ function App() {
       <header className="header">
         <div className="header-brand">
           <h1>
-            <span style={{ fontStyle: "italic" }}>Nex</span>
-            <span style={{ background: "var(--gradient-accent)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Trade</span>
+            <span style={{ fontStyle: "italic" }}>Voaybe</span>
+            <span style={{ background: "var(--gradient-accent)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>Trading bot</span>
             <sup style={{ fontSize: "0.45em", color: "var(--accent-purple)", fontWeight: 400, marginLeft: "4px" }}>v1</sup>
           </h1>
           <p>Surveillance et Controle en temps reel</p>
