@@ -20,6 +20,11 @@ MAX_RETRY     = 3
 RETRY_DELAY   = 2.0
 TICK_INTERVAL = 5.0
 
+# Seuil minimum de score pour ouvrir une position.
+# 50 = réagit à tout signal BUY (même faible) → plus actif en test
+# 75 = seulement les signaux forts → plus conservateur en prod réelle
+SCORE_THRESHOLD = 50
+
 
 class TradingBot:
     def __init__(self):
@@ -43,7 +48,6 @@ class TradingBot:
             "ma20":   None,
         }
 
-        # ── État de la position réelle (mode real) ──────────────────────────
         self.real_position: dict = {
             "active":      False,
             "entry_price": 0.0,
@@ -62,11 +66,10 @@ class TradingBot:
         self.take_profit_usd = s["take_profit_usd"]
         self.stop_loss_usd   = s["stop_loss_usd"]
         self.initial_balance = s["initial_balance"]
-        # Valeur par défaut "paper" — mode sûr si la clé est absente ou invalide
         trading_mode         = s.get("trading_mode", "paper")
         self.trading_mode    = trading_mode if trading_mode in ("paper", "real") else "paper"
-        self.order_size_pct  = s.get("order_size_pct", 100)   # 1–100
-        self.use_testnet     = s.get("use_testnet", True)      # bool
+        self.order_size_pct  = s.get("order_size_pct", 100)
+        self.use_testnet     = s.get("use_testnet", True)
 
     def _log(self, message: str):
         insert_log(message)
@@ -134,10 +137,6 @@ class TradingBot:
     # ─── TICK ASYNC ──────────────────────────────────────────────────────────
 
     async def tick(self):
-        """
-        Cycle complet : refresh marché + logique de trading.
-        Async pour supporter les ordres Binance réels.
-        """
         try:
             self._refresh_market()
         except MarketDataError as exc:
@@ -197,20 +196,30 @@ class TradingBot:
             )
             return
 
-        if self.last_signal["signal"] == "BUY" and self.last_signal["strong"]:
+        # Ouvre une position si signal BUY avec score >= SCORE_THRESHOLD
+        # SCORE_THRESHOLD = 50 → réagit à tout signal BUY (mode test actif)
+        # SCORE_THRESHOLD = 75 → seulement signaux forts (mode prod conservateur)
+        signal = self.last_signal
+        if signal["signal"] == "BUY" and signal["score"] >= SCORE_THRESHOLD:
             order = self.wallet.open_long(self.current_price)
             if order:
-                self._log(f"Nouvelle position ouverte (paper): {order}")
+                self._log(
+                    f"Nouvelle position ouverte (paper) | score={signal['score']} | "
+                    f"strong={signal['strong']} | price={self.current_price}"
+                )
                 asyncio.ensure_future(
                     notify_buy(
                         symbol=self.symbol,
                         price=self.current_price,
                         qty=self.wallet.position_qty,
-                        score=self.last_signal["score"],
+                        score=signal["score"],
                     )
                 )
         else:
-            self._log("Aucune entrée: attente d'un BUY fort")
+            self._log(
+                f"Aucune entrée: signal={signal['signal']} score={signal['score']} "
+                f"(seuil={SCORE_THRESHOLD})"
+            )
 
     # ─── REAL TRADING ────────────────────────────────────────────────────────
 
@@ -226,7 +235,6 @@ class TradingBot:
             self._tick_paper()
             return
 
-        # ── Position ouverte ─────────────────────────────────────────────────
         if self.real_position["active"]:
             entry = self.real_position["entry_price"]
             qty   = self.real_position["qty"]
@@ -282,8 +290,8 @@ class TradingBot:
                 )
             return
 
-        # ── Recherche d'entrée ────────────────────────────────────────────────
-        if self.last_signal["signal"] == "BUY" and self.last_signal["strong"]:
+        signal = self.last_signal
+        if signal["signal"] == "BUY" and signal["score"] >= SCORE_THRESHOLD:
             try:
                 usdt_balance = await exchange.get_usdt_balance()
                 quote_amount = usdt_balance * (self.order_size_pct / 100.0)
@@ -314,7 +322,7 @@ class TradingBot:
                     symbol=self.symbol,
                     price=avg_price,
                     qty=filled_qty,
-                    score=self.last_signal["score"],
+                    score=signal["score"],
                 )
 
             except BinanceExchangeError as exc:
@@ -325,7 +333,10 @@ class TradingBot:
                     self.running = False
                     await notify_bot_auto_stopped(self._consecutive_errors)
         else:
-            self._log("[REAL] Aucune entrée: attente d'un BUY fort")
+            self._log(
+                f"[REAL] Aucune entrée: signal={signal['signal']} "
+                f"score={signal['score']} (seuil={SCORE_THRESHOLD})"
+            )
 
     # ─── RUN LOOP ────────────────────────────────────────────────────────────
 

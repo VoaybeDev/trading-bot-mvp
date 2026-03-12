@@ -20,21 +20,19 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org"
 
-# Variables de module exposées pour permettre le patching dans les tests.
-# Initialisées à "" — la résolution réelle se fait à l'appel via os.getenv()
-# en fallback, ce qui garantit le bon fonctionnement en production même si
-# le .env est chargé après l'import du module.
-TELEGRAM_TOKEN   = ""
-TELEGRAM_CHAT_ID = ""
+# Variables de module initialisées via os.getenv() à l'import.
+# → En production (HF Spaces) : lit les secrets au démarrage du conteneur.
+# → En tests : patchables via patch("app.notifier.TELEGRAM_TOKEN", "...")
+# Les fonctions lisent UNIQUEMENT ces variables (pas de fallback os.getenv)
+# pour que patch("...", "") retourne bien False dans les tests.
+TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN",   "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 
 # ─── CORE ─────────────────────────────────────────────────────────────────────
 
 def _is_configured() -> bool:
-    # Priorité : variable de module (patchable en test) puis variable d'env (prod)
-    token   = TELEGRAM_TOKEN   or os.getenv("TELEGRAM_TOKEN",   "")
-    chat_id = TELEGRAM_CHAT_ID or os.getenv("TELEGRAM_CHAT_ID", "")
-    return bool(token and chat_id)
+    return bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
 
 
 async def send_message(text: str, token: Optional[str] = None, chat_id: Optional[str] = None) -> bool:
@@ -43,9 +41,8 @@ async def send_message(text: str, token: Optional[str] = None, chat_id: Optional
     Retourne True si succès, False sinon.
     Les erreurs sont loggées mais ne lèvent jamais d'exception.
     """
-    # Priorité : argument explicite > variable de module (test) > variable d'env (prod)
-    t = token   or TELEGRAM_TOKEN   or os.getenv("TELEGRAM_TOKEN",   "")
-    c = chat_id or TELEGRAM_CHAT_ID or os.getenv("TELEGRAM_CHAT_ID", "")
+    t = token   or TELEGRAM_TOKEN
+    c = chat_id or TELEGRAM_CHAT_ID
 
     if not t or not c:
         logger.debug("Telegram non configuré — notification ignorée.")
