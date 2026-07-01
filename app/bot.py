@@ -21,9 +21,11 @@ RETRY_DELAY   = 2.0
 TICK_INTERVAL = 5.0
 
 # Seuil minimum de score pour ouvrir une position.
-# 50 = réagit à tout signal BUY (même faible) → plus actif en test
-# 75 = seulement les signaux forts → plus conservateur en prod réelle
-SCORE_THRESHOLD = 50
+# analyze() force un score >= 50 dès qu'un signal BUY/SELL sort (pas HOLD).
+# → Avec threshold=50 le bot entre sur TOUT signal, même faible = trop de bruit.
+# → Avec threshold=70 (= "strong") le bot n'entre que sur signal confirmé
+#   par plusieurs indicateurs en même temps = moins de trades, mais plus fiables.
+SCORE_THRESHOLD = 70
 
 
 class TradingBot:
@@ -183,8 +185,11 @@ class TradingBot:
 
             if pnl <= self.stop_loss_usd:
                 self.wallet.close_long(self.current_price, f"SL {self.stop_loss_usd}$")
-                self.running = False
-                self._log(f"Stop Loss déclenché: pnl={pnl:.4f}$")
+                # FIX CRITIQUE : ne plus arrêter le bot sur un Stop Loss.
+                # Un SL fait partie normale du trading — le bot doit encaisser
+                # la perte et continuer à chercher la prochaine opportunité.
+                # (avant : self.running = False  ← tuait le bot au 1er SL)
+                self._log(f"Stop Loss déclenché: pnl={pnl:.4f}$ — le bot continue")
                 asyncio.ensure_future(
                     notify_stop_loss(self.symbol, self.current_price, pnl)
                 )
@@ -196,9 +201,9 @@ class TradingBot:
             )
             return
 
-        # Ouvre une position si signal BUY avec score >= SCORE_THRESHOLD
-        # SCORE_THRESHOLD = 50 → réagit à tout signal BUY (mode test actif)
-        # SCORE_THRESHOLD = 75 → seulement signaux forts (mode prod conservateur)
+        # Ouvre une position uniquement sur signal BUY confirmé (score >= SCORE_THRESHOLD).
+        # SCORE_THRESHOLD=70 = "strong" → plusieurs indicateurs alignés,
+        # réduit fortement les faux signaux vs threshold=50 (n'importe quel signal).
         signal = self.last_signal
         if signal["signal"] == "BUY" and signal["score"] >= SCORE_THRESHOLD:
             order = self.wallet.open_long(self.current_price)
@@ -273,7 +278,7 @@ class TradingBot:
                     if pnl >= self.take_profit_usd:
                         await notify_take_profit(self.symbol, avg_price, real_pnl)
                     else:
-                        self.running = False
+                        # FIX : même correction en mode réel — pas d'arrêt sur SL.
                         await notify_stop_loss(self.symbol, avg_price, real_pnl)
 
                 except BinanceExchangeError as exc:
